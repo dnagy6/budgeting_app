@@ -84,7 +84,7 @@ class Budget:
             return
 
         for category in self.categories:
-            if category.category_type == target_category_name.lower():
+            if category.name.lower() == target_category_name.lower():
                 category.planned_amount += amount
                 return
 
