@@ -39,9 +39,16 @@ def display_budget_summary(budget, rollover_funds=0.0):
         actual = cat.get_actual_amount()
         rem = cat.get_remaining_amount()
         cat_type = cat.category_type.capitalize()
+
+        if cat.category_type == "income":
+            actual_label = "Received"
+            rem_label = "Pending"
+        else:
+            actual_label = "Spent"
+            rem_label = "Remaining"
         
         print(f"  • [{cat_type}] {cat.name}:")
-        print(f"      Planned: ${cat.planned_amount:,.2f} | Spent: ${actual:,.2f} | Remaining: ${rem:,.2f}")
+        print(f"      Planned: ${cat.planned_amount:,.2f} | {actual_label}: ${actual:,.2f} | {rem_label}: ${rem:,.2f}")
 
 
 def run_cli():
