@@ -80,6 +80,7 @@ class Budget:
 
     def apply_rollover(self, amount, target_category_name):
         """Applies leftover unbudgeted cash from a previous month as new income."""
+
         if amount <= 0:
             return
 
@@ -91,8 +92,42 @@ class Budget:
         new_category = Category(
             id=None,
             budget_id=self.id or 0,
-            name = target_category_name,
-            category_type = "expense",
-            planned_amount = amount
+            name=target_category_name,
+            category_type="expense",
+            planned_amount=amount
         )
         self.categories.append(new_category)
+
+    def get_category_by_name(self, name: str):
+        """Finds an existing category envelope by name (case-insensitive)."""
+
+        for cat in self.categories:
+            if cat.name.strip().lower() == name.strip().lower():
+                return cat
+        return None
+
+    def add_or_update_category(self, name: str, category_type: str, planned_amount: float):
+        """Updates an existing category envelope in place, or creates a new one if missing."""
+
+        existing_cat = self.get_category_by_name(name)
+        
+        if existing_cat:
+            existing_cat.planned_amount = planned_amount
+            existing_cat.category_type = category_type
+            return existing_cat, False  # False = Existing category updated
+
+        new_cat = Category(
+            id=None,
+            budget_id=self.id or 0,
+            name=name.strip(),
+            category_type=category_type,
+            planned_amount=planned_amount
+        )
+        self.categories.append(new_cat)
+        return new_cat, True  # True = New category created
+
+        
+
+
+
+

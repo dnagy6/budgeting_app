@@ -87,6 +87,10 @@ def run_cli():
                 print("⚠️ Name cannot be empty.")
                 continue
 
+            existing = current_budget.get_category_by_name(name)
+            if existing:
+                print(f"Found existing category '{name}' envelope. Current planned amount is ${existing.planned_amount:,.2f}.")
+
             print("Type: [1] Expense  [2] Income")
             type_choice = input("Select Type (1 or 2): ").strip()
             cat_type = "income" if type_choice == "2" else "expense"
@@ -97,9 +101,13 @@ def run_cli():
                 print("⚠️ Invalid number format.")
                 continue
 
-            new_cat = Category(name=name, category_type=cat_type, planned_amount=planned)
-            current_budget.categories.append(new_cat)
-            print(f"✅ Added '{name}' envelope to {current_month}/{current_year}!")
+            category, is_new = current_budget.add_or_update_category(name, cat_type, planned)
+
+            if is_new:
+                print(f"Added '{category.name}' envelope with planned amount ${category.planned_amount:,.2f}.")
+
+            else:
+                print(f"Updated '{category.name}' envelope planned amount to ${category.planned_amount:,.2f}.")
 
         elif choice == "3":
             print_header("Log Transaction")
