@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from models import Budget, Category, Transaction
+from source.models import Budget, Category, Transaction
 
 class BudgetApp:
     def __init__(self, root):
