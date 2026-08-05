@@ -1,3 +1,12 @@
+"""
+File: source/domain/transaction.py
+Purpose: Defines an individual payment, purchase, or income entry.
+
+What this file does:
+- Stores the details for a single financial entry: dollar amount, description, and date.
+- Checks to make sure transaction amounts are valid positive numbers.
+- Automatically assigns today's date if no date is provided.
+"""
 from datetime import datetime
 
 

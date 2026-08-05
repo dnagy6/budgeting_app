@@ -1,3 +1,14 @@
+"""
+File: source/domain/budget.py
+Purpose: Manages a full monthly budget.
+
+What this file does:
+- Holds all category envelopes for a specific month and year.
+- Adds new categories or updates existing ones.
+- Calculates total planned income versus total planned expenses.
+- Figures out how much money is left to assign ("Left to Budget").
+"""
+
 from typing import List, Optional, Tuple
 from source.domain.category import Category
 

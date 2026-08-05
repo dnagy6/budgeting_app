@@ -1,3 +1,14 @@
+"""
+File: source/domain/category.py
+Purpose: Defines a single budget envelope (like Groceries, Rent, or Paycheck).
+
+What this file does:
+- Stores the category name, type (income or expense), and target budget amount.
+- Keeps a list of all transactions assigned to this envelope.
+- Calculates total actual spending or earnings for this envelope.
+- Calculates remaining funds left to spend or pending income expected.
+"""
+
 from typing import List
 from source.domain.transaction import Transaction
 
