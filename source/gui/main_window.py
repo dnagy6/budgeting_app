@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from source.domain.budget import Budget
 from source.gui.dialogs.category_dialog import AddCategoryDialog
+from source.gui.dialogs.transaction_dialog import LogTransactionDialog
 
 
 class BudgetApp:
@@ -107,7 +108,11 @@ class BudgetApp:
         )
         btn_edit_cat.pack(side=tk.LEFT, padx=5)
 
-        btn_log_tx = ttk.Button(action_frame, text="Log Transaction", command=self.placeholder_action)
+        btn_log_tx = ttk.Button(
+            action_frame,
+            text="Log Transaction",
+            command=self.open_log_transaction_dialog
+        )
         btn_log_tx.pack(side=tk.LEFT, padx=5)
 
         btn_rollover = ttk.Button(action_frame, text="Close Month & Roll Over", command=self.placeholder_action)
@@ -128,6 +133,12 @@ class BudgetApp:
 
         if selected_cat:
             AddCategoryDialog(self.root, self.current_budget, self.refresh_ui, existing_category=selected_cat)
+
+    def open_log_transaction_dialog(self):
+        if not self.current_budget.categories:
+            messagebox.showwarning("No Categories", "Please add at least one category envelope before logging a transaction.")
+            return
+        LogTransactionDialog(self.root, self.current_budget, self.refresh_ui)
 
     def placeholder_action(self):
         messagebox.showinfo("In Progress", "This button will trigger in our next step!")
