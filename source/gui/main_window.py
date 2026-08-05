@@ -99,7 +99,7 @@ class BudgetApp:
             text="Add Category",
             command=self.open_add_category_dialog
         )
-        btn_add_cat.pack(side=tk.LEFT, padx=5)
+        btn_add_cat.pack(side=tk.LEFT, padx=8)
 
         btn_edit_cat = ttk.Button(
             action_frame,
