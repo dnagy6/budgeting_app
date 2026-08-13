@@ -1,3 +1,4 @@
+from decimal import Decimal
 import tkinter as tk
 from tkinter import ttk, messagebox
 from source.domain.category import Category
@@ -7,10 +8,11 @@ from source.gui.dialogs.base_dialog import BaseDialog
 class AddCategoryDialog(BaseDialog):
     """Pop-up window for adding or editing a category envelope."""
 
-    def __init__(self, parent, budget, on_success_callback, existing_category=None):
+    def __init__(self, parent, budget, on_success_callback, existing_category = None, repository = None):
         title_text = "Edit Category Envelope" if existing_category else "Add Category Envelope"
         super().__init__(parent, title=title_text, width=450, height=240)
 
+        self.repository = repository
         self.budget = budget
         self.on_success = on_success_callback
         self.existing_category = existing_category
@@ -66,5 +68,12 @@ class AddCategoryDialog(BaseDialog):
             category_type=category_type,
             planned_amount=amount
         )
+
+        #Persistence to SQLite Database
+        if self.repository:
+            self.repository.add_category(
+                name=name,
+                allocated_amount=Decimal(str(amount))
+            )
         self.on_success()
         self.destroy()

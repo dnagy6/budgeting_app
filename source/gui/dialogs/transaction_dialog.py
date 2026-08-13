@@ -18,9 +18,10 @@ from source.gui.dialogs.base_dialog import BaseDialog
 class LogTransactionDialog(BaseDialog):
     """Pop-up window for logging a new transaction against a category envelope."""
 
-    def __init__(self, parent, budget, on_success_callback):
+    def __init__(self, parent, budget, on_success_callback, repository = None):
         super().__init__(parent, title="Log Transaction", width=450, height=280)
 
+        self.repository = repository
         self.budget = budget
         self.on_success = on_success_callback
 
@@ -87,6 +88,22 @@ class LogTransactionDialog(BaseDialog):
         try:
             tx = Transaction(amount=amount, description=description, date=date_str if date_str else None)
             selected_cat.add_transaction(tx)
+
+            #TRY Persistence to SQLite DB
+            if self.repository:
+                try:
+                    processed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    processed_date = datetime.now().date()
+                
+            #Find matching category ID in SQL
+            category_id = None
+            for db_cat in self.repository.get_all_categories():
+                if db_cat.name.lower() == cat_name.lower():
+                    category_id = db_cat.id
+                    break
+
+
         except ValueError as e:
             messagebox.showwarning("Input Error", str(e), parent=self)
             return
