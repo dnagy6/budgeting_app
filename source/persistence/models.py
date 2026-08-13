@@ -10,6 +10,7 @@ class CategoryModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    category_type: Mapped[str] = mapped_column(String(50), unique= True, nullable = False)
     allocated_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
 
     # Relationship to transactions

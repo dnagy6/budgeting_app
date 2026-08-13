@@ -205,7 +205,7 @@ class BudgetApp:
         for db_cat in db_categories:
             self.current_budget.add_or_update_category(
                 name = db_cat.name,
-                category_type = getattr(db_cat, "category_type", "expense"),
+                category_type = db_cat.category_type,
                 planned_amount = float(db_cat.allocated_amount)
             )
 

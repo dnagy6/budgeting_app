@@ -11,17 +11,23 @@ class BudgetRepository:
 
     # CATEGORY OPERATIONS
 
-    def add_category(self, name: str, allocated_amount: Decimal = Decimal("0.00")) -> CategoryModel:
-        """Creates and saves a new category."""
-        with SessionLocal() as session:
-            category = CategoryModel(
-                name=name,
-                allocated_amount=allocated_amount
-            )
-            session.add(category)
-            session.commit()
-            session.refresh(category)
-            return category
+    def add_category(
+            self, 
+            name: str,
+            category_type: str = "expense", 
+            allocated_amount: Decimal = Decimal("0.00")
+        ) -> CategoryModel:
+            """Creates and saves a new category."""
+            with SessionLocal() as session:
+                category = CategoryModel(
+                    name=name,
+                    category_type = category_type,
+                    allocated_amount=allocated_amount
+                )
+                session.add(category)
+                session.commit()
+                session.refresh(category)
+                return category
 
     def get_all_categories(self) -> List[CategoryModel]:
         """Retrieves all categories ordered alphabetically by name."""

@@ -73,6 +73,7 @@ class AddCategoryDialog(BaseDialog):
         if self.repository:
             self.repository.add_category(
                 name=name,
+                category_type = category_type,
                 allocated_amount=Decimal(str(amount))
             )
         self.on_success()
