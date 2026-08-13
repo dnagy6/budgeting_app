@@ -1,13 +1,16 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from source.domain.budget import Budget
+from source.domain.transaction import Transaction
 from source.gui.dialogs.category_dialog import AddCategoryDialog
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
+from source.persistence.repository import BudgetRepository
 
 
 class BudgetApp:
-    def __init__(self, root):
+    def __init__(self, root, repository: BudgetRepository):
         self.root = root
+        self.repository = repository
         self.root.title("Zero-Based Budgeting App")
         self.root.geometry("820x550")
         self.root.minsize(650, 450)
@@ -20,6 +23,9 @@ class BudgetApp:
 
         # Active budget
         self.current_budget = self.get_or_create_budget(self.current_year, self.current_month)
+
+        #Load SAVED Data from DB upon starting application
+        self.load_from_repository()
 
         # Build UI
         self.create_header_ui()
@@ -119,7 +125,13 @@ class BudgetApp:
         btn_rollover.pack(side=tk.LEFT, padx=5)
 
     def open_add_category_dialog(self):
-        AddCategoryDialog(self.root, self.current_budget, self.refresh_ui, existing_category=None)
+        AddCategoryDialog(
+            self.root, 
+            self.current_budget, 
+            self.refresh_ui, 
+            existing_category=None,
+            repository = self.repository
+        )
 
     def open_edit_category_dialog(self):
         selected_item = self.tree.selection()
@@ -138,7 +150,12 @@ class BudgetApp:
         if not self.current_budget.categories:
             messagebox.showwarning("No Categories", "Please add at least one category envelope before logging a transaction.")
             return
-        LogTransactionDialog(self.root, self.current_budget, self.refresh_ui)
+        LogTransactionDialog(
+            self.root, 
+            self.current_budget, 
+            self.refresh_ui,
+            repository = self.repository
+        )
 
     def placeholder_action(self):
         messagebox.showinfo("In Progress", "This button will trigger in our next step!")
@@ -178,3 +195,29 @@ class BudgetApp:
                     f"${remaining:,.2f}"
                 )
             )
+
+    def load_from_repository(self):
+        """Retrieves stored categories and transactions from SQLite and populates the in-memory budget."""
+        if not self.repository:
+            return
+
+        db_categories = self.repository.get_all_categories()
+        for db_cat in db_categories:
+            self.current_budget.add_or_update_category(
+                name = db_cat.name,
+                category_type = getattr(db_cat, "category_type", "expense"),
+                planned_amount = float(db_cat.allocated_amount)
+            )
+
+        db_transactions = self.repository.get_all_transactions()
+        for db_tx in db_transactions:
+            if db_tx.category:
+                domain_cat = self.current_budget.get_category_by_name(db_tx.category.name)
+                if domain_cat:
+                    tx_date = db_tx.trans_date.strftime("%Y-%m-%d") if db_tx.trans_date else None
+                    tx = Transaction(
+                        amount = float(db_tx.amount),
+                        description = db_tx.note or "",
+                        date = tx_date
+                    )
+                    domain_cat.add_transaction(tx)
