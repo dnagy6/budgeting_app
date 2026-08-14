@@ -49,7 +49,7 @@ class Budget:
     def get_total_allocated(self) -> float:
         return sum(cat.planned_amount for cat in self.categories if cat.category_type == "expense")
 
-    def get_unallocated_amount(self) -> float:
+    def get_remaining_to_budget(self) -> float:
         """Left to Budget = Total Income - Total Expense Allocations."""
         return self.get_total_income() - self.get_total_allocated()
 

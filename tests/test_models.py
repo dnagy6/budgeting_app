@@ -66,8 +66,8 @@ class TestBudgetLogic(unittest.TestCase):
         self.assertEqual(self.budget.get_total_income(), 2000.0)
         self.assertEqual(self.budget.get_total_allocated(), 1500.0)
 
-    @unittest.skip("get_remaining_to_budget domain logic pending implementation")
-    def test_budget_totals_and_remaining_unallocated(self):
+    
+    def test_budget_totals_and_remaining_to_budget(self):
         """Verify zero-based calculation: Income (2000) - Expenses (1500) = 500."""
         self.assertEqual(self.budget.get_remaining_to_budget(), 500.0)
 

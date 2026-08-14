@@ -211,7 +211,8 @@ class BudgetApp:
         rollover_cash = self.rollovers.get((self.current_year, self.current_month), 0.0)
         total_income = self.current_budget.get_total_income() + rollover_cash
         total_allocated = self.current_budget.get_total_allocated()
-        unallocated = total_income - total_allocated
+
+        unallocated = self.current_budget.get_remaining_to_budget() + rollover_cash
 
         self.income_val_label.config(text=f"${total_income:,.2f}")
         self.allocated_val_label.config(text=f"${total_allocated:,.2f}")
