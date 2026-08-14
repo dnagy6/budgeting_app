@@ -114,6 +114,13 @@ class BudgetApp:
         )
         btn_edit_cat.pack(side=tk.LEFT, padx=5)
 
+        btn_delete_cat = ttk.Button(
+            action_frame,
+            text = "Delete Selected",
+            command = self.delete_selected_category
+        )
+        btn_delete_cat.pack(side=tk.LEFT, padx=5)
+
         btn_log_tx = ttk.Button(
             action_frame,
             text="Log Transaction",
@@ -125,15 +132,17 @@ class BudgetApp:
         btn_rollover.pack(side=tk.LEFT, padx=5)
 
     def open_add_category_dialog(self):
+        """Opens dialog to create a brand new category envelope."""
         AddCategoryDialog(
-            self.root, 
-            self.current_budget, 
-            self.refresh_ui, 
+            self.root,
+            self.current_budget,
+            self.refresh_ui,
             existing_category=None,
-            repository = self.repository
+            repository=self.repository
         )
 
     def open_edit_category_dialog(self):
+        """Opens dialog to edit an existing selected category envelope."""
         selected_item = self.tree.selection()
         if not selected_item:
             messagebox.showwarning("No Selection", "Please select a category from the table first.")
@@ -144,7 +153,43 @@ class BudgetApp:
         selected_cat = self.current_budget.get_category_by_name(cat_name)
 
         if selected_cat:
-            AddCategoryDialog(self.root, self.current_budget, self.refresh_ui, existing_category=selected_cat)
+            AddCategoryDialog(
+                self.root,
+                self.current_budget,
+                self.refresh_ui,
+                existing_category=selected_cat,
+                repository=self.repository  # <-- Added repository here
+            )
+
+    def delete_selected_category(self):
+        """Deletes the selected category envelope after user confirmation."""
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showwarning("No Selection", "Please select a category from the table first.")
+            return
+
+        item_values = self.tree.item(selected_item[0], "values")
+        cat_name = item_values[1]
+
+        # Confirmation popup before deletion
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to delete the envelope '{cat_name}'?",
+            parent=self.root
+        )
+
+        if confirm:
+            # 1. Remove from database
+            if self.repository:
+                self.repository.delete_category_by_name(cat_name)
+
+            # 2. Remove from in-memory budget
+            cat_to_remove = self.current_budget.get_category_by_name(cat_name)
+            if cat_to_remove and cat_to_remove in self.current_budget.categories:
+                self.current_budget.categories.remove(cat_to_remove)
+
+            # 3. Refresh display
+            self.refresh_ui()
 
     def open_log_transaction_dialog(self):
         if not self.current_budget.categories:

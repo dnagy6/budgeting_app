@@ -71,10 +71,18 @@ class AddCategoryDialog(BaseDialog):
 
         #Persistence to SQLite Database
         if self.repository:
-            self.repository.add_category(
-                name=name,
-                category_type = category_type,
-                allocated_amount=Decimal(str(amount))
-            )
+            if self.existing_category:
+                self.repository.update_category_by_name(
+                    old_name = self.existing_category.name,
+                    new_name = name,
+                    category_type = category_type,
+                    allocated_amount = Decimal(str(amount))
+                )
+            else:
+                self.repository.add_category(
+                    name = name,
+                    category_type = category_type,
+                    allocated_amount = Decimal(str(amount))
+                )
         self.on_success()
         self.destroy()

@@ -50,6 +50,36 @@ class BudgetRepository:
                 return True
             return False
 
+    def update_category_name(
+            self,
+            old_name: str,
+            new_name: str,
+            category_type: str,
+            allocated_amount: Decimal
+    ) -> bool:
+        """Udpates an existing category record in SQLite"""
+        with SessionLocal() as session:
+            stmt = select(CategoryModel).where(CategoryModel.name == old_name)
+            category = session.scalars(stmt).first()
+            if category:
+                category.name= new_name
+                category.category_type = category_type
+                category.allocated_amount = allocated_amount
+                session.commit()
+                return True
+            return False
+
+    def delete_category_by_name(self, name:str) -> bool:
+        """Delete a category and its associated transaction from SQLite."""
+        with SessionLocal() as session:
+            stmt = select(CategoryModel).where(CategoryModel.name == name)
+            category = session.scalars(stmt).first()
+            if category:
+                session.delete(category)
+                session.commit()
+                return True
+            return False
+
     # TRANSACTION OPERATIONS
 
     def add_transaction(
