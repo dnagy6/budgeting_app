@@ -8,18 +8,21 @@ What this file does:
 - Automatically assigns today's date if no date is provided.
 """
 from datetime import datetime
+from dataclasses import dataclass
+from typing import Optional
 
-
+@dataclass(slots = True)
 class Transaction:
     """Represents an individual financial transaction (income or expense)."""
 
-    def __init__(self, amount: float, description: str, date: str = None):
-        if amount <= 0:
+    amount: float
+    description: str
+    date: Optional[str] = None
+
+    def __post_init__(self):
+        if self.amount <= 0:
             raise ValueError("Transaction amount must be greater than zero.")
-
-        self.amount = float(amount)
-        self.description = description.strip()
-        self.date = date if date else datetime.now().strftime("%Y-%m-%d")
-
-    def __repr__(self):
-        return f"<Transaction ${self.amount:.2f} - {self.description} ({self.date})>"
+        self.amount = float(self.amount)
+        self.description = self.description.strip()
+        if not self.date:
+            self.date = datetime.now().strftime("%Y-%m-%d")

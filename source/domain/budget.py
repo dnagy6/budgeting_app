@@ -8,24 +8,22 @@ What this file does:
 - Calculates total planned income versus total planned expenses.
 - Figures out how much money is left to assign ("Left to Budget").
 """
-
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 from source.domain.category import Category
 
-
+@dataclass(slots = True)
 class Budget:
     """Container for managing a monthly zero-based budget."""
 
-    def __init__(self, month: int, year: int, categories: Optional[List[Category]] = None):
-        self.month = month
-        self.year = year
-        self.categories: List[Category] = categories if categories is not None else []
+    month: int
+    year: int
+    categories: List[Category] = field(default_factory=list)
 
     def get_category_by_name(self, name: str) -> Optional[Category]:
-        for cat in self.categories:
-            if cat.name.lower() == name.strip().lower():
-                return cat
-        return None
+        """Finds an existing category envelope by name (case-insensitive)."""
+        clean_name = name.strip().lower()
+        return next((cat for cat in self.categories if cat.name.lower() == clean_name), None)
 
     def add_or_update_category(self, name: str, category_type: str, planned_amount: float) -> Tuple[Category, bool]:
         """
@@ -52,6 +50,3 @@ class Budget:
     def get_remaining_to_budget(self) -> float:
         """Left to Budget = Total Income - Total Expense Allocations."""
         return self.get_total_income() - self.get_total_allocated()
-
-    def __repr__(self):
-        return f"<Budget {self.month}/{self.year} Envelopes: {len(self.categories)}>"
