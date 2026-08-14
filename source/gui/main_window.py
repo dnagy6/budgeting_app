@@ -5,12 +5,14 @@ from source.domain.transaction import Transaction
 from source.gui.dialogs.category_dialog import AddCategoryDialog
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
 from source.persistence.repository import BudgetRepository
+from source.services.budget_service import BudgetService
+
 
 
 class BudgetApp:
-    def __init__(self, root, repository: BudgetRepository):
+    def __init__(self, root, service: BudgetService):
         self.root = root
-        self.repository = repository
+        self.service = service
         self.root.title("Zero-Based Budgeting App")
         self.root.geometry("820x550")
         self.root.minsize(650, 450)
@@ -21,11 +23,11 @@ class BudgetApp:
         self.current_month = 8
         self.rollovers = {}
 
-        # Active budget
-        self.current_budget = self.get_or_create_budget(self.current_year, self.current_month)
-
-        #Load SAVED Data from DB upon starting application
-        self.load_from_repository()
+        # Active budget w/ refactoring
+        if self.service:
+            self.current_budget = self.service.load_budget(self.current_year, self.current_month)
+        else:
+            self.current_budget = self.get_or_create_budget(self.current_year, self.current_month)
 
         # Build UI
         self.create_header_ui()
@@ -138,7 +140,7 @@ class BudgetApp:
             self.current_budget,
             self.refresh_ui,
             existing_category=None,
-            repository=self.repository
+            service = self.service
         )
 
     def open_edit_category_dialog(self):
@@ -158,7 +160,7 @@ class BudgetApp:
                 self.current_budget,
                 self.refresh_ui,
                 existing_category=selected_cat,
-                repository=self.repository  # <-- Added repository here
+                service = self.service
             )
 
     def delete_selected_category(self):
@@ -168,27 +170,10 @@ class BudgetApp:
             messagebox.showwarning("No Selection", "Please select a category from the table first.")
             return
 
-        item_values = self.tree.item(selected_item[0], "values")
-        cat_name = item_values[1]
+        cat_name = self.tree.item(selected_item[0], "values")[1]
 
-        # Confirmation popup before deletion
-        confirm = messagebox.askyesno(
-            "Confirm Delete",
-            f"Are you sure you want to delete the envelope '{cat_name}'?",
-            parent=self.root
-        )
-
-        if confirm:
-            # 1. Remove from database
-            if self.repository:
-                self.repository.delete_category_by_name(cat_name)
-
-            # 2. Remove from in-memory budget
-            cat_to_remove = self.current_budget.get_category_by_name(cat_name)
-            if cat_to_remove and cat_to_remove in self.current_budget.categories:
-                self.current_budget.categories.remove(cat_to_remove)
-
-            # 3. Refresh display
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{cat_name}'?", parent=self.root):
+            self.service.delete_category(self.current_budget, cat_name)
             self.refresh_ui()
 
     def open_log_transaction_dialog(self):
@@ -199,7 +184,7 @@ class BudgetApp:
             self.root, 
             self.current_budget, 
             self.refresh_ui,
-            repository = self.repository
+            service = self.service
         )
 
     def placeholder_action(self):
@@ -242,28 +227,3 @@ class BudgetApp:
                 )
             )
 
-    def load_from_repository(self):
-        """Retrieves stored categories and transactions from SQLite and populates the in-memory budget."""
-        if not self.repository:
-            return
-
-        db_categories = self.repository.get_all_categories()
-        for db_cat in db_categories:
-            self.current_budget.add_or_update_category(
-                name = db_cat.name,
-                category_type = db_cat.category_type,
-                planned_amount = float(db_cat.allocated_amount)
-            )
-
-        db_transactions = self.repository.get_all_transactions()
-        for db_tx in db_transactions:
-            if db_tx.category:
-                domain_cat = self.current_budget.get_category_by_name(db_tx.category.name)
-                if domain_cat:
-                    tx_date = db_tx.trans_date.strftime("%Y-%m-%d") if db_tx.trans_date else None
-                    tx = Transaction(
-                        amount = float(db_tx.amount),
-                        description = db_tx.note or "",
-                        date = tx_date
-                    )
-                    domain_cat.add_transaction(tx)

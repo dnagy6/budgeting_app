@@ -8,11 +8,11 @@ from source.gui.dialogs.base_dialog import BaseDialog
 class AddCategoryDialog(BaseDialog):
     """Pop-up window for adding or editing a category envelope."""
 
-    def __init__(self, parent, budget, on_success_callback, existing_category = None, repository = None):
+    def __init__(self, parent, budget, on_success_callback, existing_category = None, service = None):
         title_text = "Edit Category Envelope" if existing_category else "Add Category Envelope"
         super().__init__(parent, title=title_text, width=450, height=240)
 
-        self.repository = repository
+        self.service = service
         self.budget = budget
         self.on_success = on_success_callback
         self.existing_category = existing_category
@@ -63,26 +63,22 @@ class AddCategoryDialog(BaseDialog):
             messagebox.showwarning("Input Error", "Planned amount must be a positive number.", parent=self)
             return
 
-        self.budget.add_or_update_category(
-            name=name,
-            category_type=category_type,
-            planned_amount=amount
-        )
+        if self.service:
+            old_name = self.existing_category.name if self.existing_category else None
+            self.service.save_category(
+                budget=self.budget,
+                name=name,
+                category_type=category_type,
+                planned_amount=amount,
+                old_name=old_name
+            )
+        else:
+            # Fallback for standalone/in-memory mode IF service is NOT passed
+            self.budget.add_or_update_category(
+                name=name,
+                category_type=category_type,
+                planned_amount=amount
+            )
 
-        #Persistence to SQLite Database
-        if self.repository:
-            if self.existing_category:
-                self.repository.update_category_by_name(
-                    old_name = self.existing_category.name,
-                    new_name = name,
-                    category_type = category_type,
-                    allocated_amount = Decimal(str(amount))
-                )
-            else:
-                self.repository.add_category(
-                    name = name,
-                    category_type = category_type,
-                    allocated_amount = Decimal(str(amount))
-                )
         self.on_success()
         self.destroy()
