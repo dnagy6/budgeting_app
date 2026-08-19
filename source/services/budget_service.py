@@ -20,7 +20,10 @@ class BudgetService:
         
         # 1. Populate categories from DB
         db_categories = self.repository.get_all_categories()
+        category_id_map = {}
+
         for db_cat in db_categories:
+            category_id_map[db_cat.id] = db_cat.name
             budget.add_or_update_category(
                 name=db_cat.name,
                 category_type=db_cat.category_type,
@@ -30,8 +33,9 @@ class BudgetService:
         # 2. Attach transactions
         db_transactions = self.repository.get_all_transactions()
         for db_tx in db_transactions:
-            if db_tx.category:
-                cat = budget.get_category_by_name(db_tx.category.name)
+            cat_name = category_id_map.get(db_tx.category_id)
+            if cat_name:
+                cat = budget.get_category_by_name(cat_name)
                 if cat:
                     tx_date = db_tx.trans_date.strftime("%Y-%m-%d") if db_tx.trans_date else None
                     tx = Transaction(

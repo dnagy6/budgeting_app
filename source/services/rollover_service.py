@@ -41,15 +41,15 @@ class RolloverService:
         Closes out current month, calculates leftover cash pool, loads or creates next month's
         budget, and applies the rollover balance.
         """
-
+        if not self.budget_service:
+            raise ValueError("BudgetService is required to load the next month's budget.")
+        
         surplus = self.calculate_month_surplus(current_budget)
-
         next_year, next_month = self.get_next_month_year(
             current_budget.year, current_budget.month
         )
 
         next_budget = self.budget_service.load_budget(next_year, next_month)
-
         next_budget.apply_rollover(surplus)
 
         return next_budget

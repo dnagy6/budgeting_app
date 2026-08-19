@@ -6,6 +6,7 @@ from source.gui.dialogs.category_dialog import AddCategoryDialog
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
 from source.persistence.repository import BudgetRepository
 from source.services.budget_service import BudgetService
+from source.services.rollover_service import RolloverService
 
 
 
@@ -13,6 +14,8 @@ class BudgetApp:
     def __init__(self, root, service: BudgetService):
         self.root = root
         self.service = service
+        self.rollover_service = RolloverService(self.service)
+        
         self.root.title("Zero-Based Budgeting App")
         self.root.geometry("820x550")
         self.root.minsize(650, 450)
@@ -130,7 +133,11 @@ class BudgetApp:
         )
         btn_log_tx.pack(side=tk.LEFT, padx=5)
 
-        btn_rollover = ttk.Button(action_frame, text="Close Month & Roll Over", command=self.placeholder_action)
+        btn_rollover = ttk.Button(
+            action_frame,
+            text= "Close Month & Roll Over",
+            command= self.close_month_and_rollover
+        )
         btn_rollover.pack(side=tk.LEFT, padx=5)
 
     def open_add_category_dialog(self):
@@ -187,18 +194,42 @@ class BudgetApp:
             service = self.service
         )
 
+    def close_month_and_rollover(self):
+        """Closes current month, calculates surplus, and rolls forward into the next month."""
+        surplus = self.rollover_service.calculate_month_surplus(self.current_budget)
+        
+        confirm = messagebox.askyesno(
+            "Close Month & Roll Over",
+            f"End budget for {self.current_month}/{self.current_year}?\n\n"
+            f"Calculated leftover cash pool: ${surplus:,.2f}\n"
+            "This will advance the app to next month with this balance.",
+            parent=self.root
+        )
+
+        if confirm:
+            # Advance budget and carry funds forward
+            self.current_budget = self.rollover_service.close_and_rollover_month(self.current_budget)
+            self.current_year = self.current_budget.year
+            self.current_month = self.current_budget.month
+
+            self.refresh_ui()
+            messagebox.showinfo(
+                "Month Rolled Over",
+                f"Successfully opened {self.current_month}/{self.current_year}!",
+                parent=self.root
+            )
+    
     def placeholder_action(self):
         messagebox.showinfo("In Progress", "This button will trigger in our next step!")
 
     def refresh_ui(self):
         self.title_label.config(text=f"Budget Overview — {self.current_month}/{self.current_year}")
 
-        rollover_cash = self.rollovers.get((self.current_year, self.current_month), 0.0)
-        total_income = self.current_budget.get_total_income() + rollover_cash
+        total_income = self.current_budget.get_total_income()
         total_allocated = self.current_budget.get_total_allocated()
+        unallocated = self.current_budget.get_remaining_to_budget()
 
-        unallocated = self.current_budget.get_remaining_to_budget() + rollover_cash
-
+        # Updates Summary Labels
         self.income_val_label.config(text=f"${total_income:,.2f}")
         self.allocated_val_label.config(text=f"${total_allocated:,.2f}")
 
@@ -207,6 +238,7 @@ class BudgetApp:
         else:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", foreground="black")
 
+        # Repopulate Table
         for item in self.tree.get_children():
             self.tree.delete(item)
 
