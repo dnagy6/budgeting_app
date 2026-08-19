@@ -22,8 +22,8 @@ class Category:
     transactions: List[Transaction] = field(default_factory=list)
 
     def __post_init__(self):
-        self.name = self.name.strip()
-        self.category_type = self.category_type.strip().lower()
+        self.name = str(self.name).strip()
+        self.category_type = str(self.category_type).strip().lower()
         if self.category_type not in ["income", "expense"]:
             raise ValueError("Category type must be either 'income' or 'expense'.")
         self.planned_amount = float(self.planned_amount)

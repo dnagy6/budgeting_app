@@ -71,26 +71,13 @@ class TestBudgetLogic(unittest.TestCase):
         """Verify zero-based calculation: Income (2000) - Expenses (1500) = 500."""
         self.assertEqual(self.budget.get_remaining_to_budget(), 500.0)
 
-    @unittest.skip("apply_rollover domain logic pending implementation")
-    def test_apply_rollover_to_existing_category(self):
-        """Verify rollover adds amount to an existing expense category envelope."""
-        # Add $50 rollover directly to Groceries (300 + 50 = 350)
-        self.budget.apply_rollover(amount=50.0, target_category_name="Groceries")
-        self.assertEqual(self.food_category.planned_amount, 350.0)
+    def test_budget_rollover_application(self):
+        """Rollover increases availabel cash poool without inflating earned income."""
+        self.budget.apply_rollover(250.0)
+        self.assertEqual(self.budget.get_total_income(), 2000.0)
+        self.assertEqual(self.budget.get_total_available(), 2250.0)
+        self.assertEqual(self.budget.get_remaining_to_budget(), 750.0)
 
-    @unittest.skip("apply_rollover domain logic pending implementation")
-    def test_apply_rollover_creates_new_expense_category(self):
-        """Verify rollover creates a new expense category if target envelope doesn't exist."""
-        self.budget.apply_rollover(amount=100.0, target_category_name="Vacation Fund")
-
-        # Check that a 4th category was created
-        self.assertEqual(len(self.budget.categories), 4)
-
-        # Locate the new category and assert properties
-        new_category = self.budget.categories[-1]
-        self.assertEqual(new_category.name, "Vacation Fund")
-        self.assertEqual(new_category.planned_amount, 100.0)
-        self.assertEqual(new_category.category_type, "expense")
 
 
 if __name__ == "__main__":
