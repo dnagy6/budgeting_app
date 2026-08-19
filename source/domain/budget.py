@@ -54,6 +54,14 @@ class Budget:
         """total planned expense allocation"""
         return sum(cat.planned_amount for cat in self.categories if cat.category_type.lower() == "expense")
 
+    def get_actual_income(self) -> float:
+        """Calculates actual cash received from income transactions this month."""
+        return sum(cat.get_actual_amount() for cat in self.categories if cat.category_type.lower() == "income")
+
+    def get_actual_spent(self) -> float:
+        """Calculates actual money spent from expense transactions this month."""
+        return sum(cat.get_actual_amount() for cat in self.categories if cat.category_type.lower() == "expense")
+
     def get_total_available(self) -> float:
         """Total assignable cash pool: Earned income + rollover balance."""
         return self.get_total_income() + self.rollover_amount

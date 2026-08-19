@@ -1,4 +1,5 @@
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, messagebox
 from source.domain.budget import Budget
 from source.domain.transaction import Transaction
@@ -22,8 +23,9 @@ class BudgetApp:
 
         # Storage
         self.budgets = {}
-        self.current_year = 2026
-        self.current_month = 8
+        now = datetime.now()
+        self.current_year = now.year
+        self.current_month = now.month
         self.rollovers = {}
 
         # Active budget w/ refactoring

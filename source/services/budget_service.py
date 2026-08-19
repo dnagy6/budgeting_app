@@ -33,6 +33,11 @@ class BudgetService:
         # 2. Attach transactions
         db_transactions = self.repository.get_all_transactions()
         for db_tx in db_transactions:
+            # DATE FILTER
+            if db_tx.trans_date:
+                if db_tx.trans_date.year != year or db_tx.trans_date.month != month:
+                    continue
+                
             cat_name = category_id_map.get(db_tx.category_id)
             if cat_name:
                 cat = budget.get_category_by_name(cat_name)

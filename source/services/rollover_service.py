@@ -26,7 +26,7 @@ class RolloverService:
             for cat in budget.categories
             if cat.category_type == "expense"
         )
-        return total_available - total_actual_spent
+        return budget.rollover_amount + budget.get_actual_income() - budget.get_actual_spent()
 
     @staticmethod
     def get_next_month_year(current_year: int, current_month: int) -> Tuple[int, int]:
