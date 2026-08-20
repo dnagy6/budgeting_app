@@ -1,6 +1,13 @@
 import tkinter as tk
+import calendar
+
+#Widgets
+from source.gui.widgets.month_picker import MonthPickerPopup
+
 from datetime import datetime
 from tkinter import ttk, messagebox
+
+#Files
 from source.domain.budget import Budget
 from source.domain.transaction import Transaction
 from source.gui.dialogs.category_dialog import AddCategoryDialog
@@ -53,12 +60,18 @@ class BudgetApp:
         header_frame = ttk.Frame(self.root, padding="10")
         header_frame.pack(fill=tk.X)
 
-        self.title_label = ttk.Label(
+        month_name = calendar.month_name[self.current_month]
+        self.btn_month_selector = tk.Button(
             header_frame,
-            text=f"Budget Overview — {self.current_month}/{self.current_year}",
-            font=("Helvetica", 16, "bold")
+            text = f"{month_name} {self.current_year} ▾",
+            font = ("Helvetica", 22, "bold"),
+            relief = tk.FLAT,
+            bd = 0,
+            highlightthickness=0,
+            cursor = "hand2",
+            command = self.open_month_picker
         )
-        self.title_label.pack(side=tk.LEFT)
+        self.btn_month_selector.pack(side = tk.LEFT)
 
     def create_summary_ui(self):
         summary_frame = ttk.LabelFrame(self.root, text=" Monthly Totals ", padding="10")
@@ -224,8 +237,23 @@ class BudgetApp:
     def placeholder_action(self):
         messagebox.showinfo("In Progress", "This button will trigger in our next step!")
 
+    def open_month_picker(self):
+        MonthPickerPopup(
+            parent_button = self.btn_month_selector,
+            initial_year = self.current_year,
+            initial_month = self.current_month,
+            on_select_callback= self.change_budget_month
+        )
+
+    def change_budget_month(self, year: int, month: int):
+        self.current_year = year
+        self.current_month = month
+        self.current_budget = self.service.load_budget(year, month)
+        self.refresh_ui()
+
     def refresh_ui(self):
-        self.title_label.config(text=f"Budget Overview — {self.current_month}/{self.current_year}")
+        month_name = calendar.month_name[self.current_month]
+        self.btn_month_selector.config(text=f"{month_name} {self.current_year}  ▾")
 
         total_income = self.current_budget.get_total_income()
         total_allocated = self.current_budget.get_total_allocated()
