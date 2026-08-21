@@ -73,6 +73,14 @@ class BudgetApp:
         )
         self.btn_month_selector.pack(side = tk.LEFT)
 
+        # RESET BUTTON
+        self.btn_reset_budget = ttk.Button(
+            header_frame,
+            text="Reset Budget ▾",
+            command=self.show_reset_budget_options
+        )
+        self.btn_reset_budget.pack(side=tk.RIGHT, padx=6)
+
     def create_summary_ui(self):
         summary_frame = ttk.LabelFrame(self.root, text=" Monthly Totals ", padding="10")
         summary_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -246,11 +254,66 @@ class BudgetApp:
         )
 
     def change_budget_month(self, year: int, month: int):
+        month_name = calendar.month_name[month]
+
+        # Check if the selected month already has initialized allocations
+        if not self.service.has_budget_for_month(year, month):
+            prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+            has_prev = self.service.has_budget_for_month(prev_year, prev_month)
+
+            if has_prev:
+                choice = messagebox.askyesnocancel(
+                    f"Start Planning for {month_name} {year}",
+                    f"No budget found for {month_name} {year}.\n\n"
+                    f"• Yes: Copy planned categories & amounts from previous month\n"
+                    f"• No: Start fresh with $0.00 planned\n"
+                    f"• Cancel: Return to current view",
+                    parent=self.root
+                )
+                if choice is None:
+                    return
+                elif choice is True:
+                    self.service.copy_previous_month_budget(year, month)
+                else:
+                    self.service.initialize_fresh_month(year, month)
+            else:
+                start = messagebox.askyesno(
+                    f"Start Planning for {month_name} {year}",
+                    f"Start planning for {month_name} {year}?",
+                    parent=self.root
+                )
+                if not start:
+                    return
+                self.service.initialize_fresh_month(year, month)
+
         self.current_year = year
         self.current_month = month
         self.current_budget = self.service.load_budget(year, month)
         self.refresh_ui()
 
+    def show_reset_budget_options(self):
+        month_name = calendar.month_name[self.current_month]
+        choice = messagebox.askyesnocancel(
+            f"Reset {month_name} {self.current_year} Budget",
+            f"Choose a reset option for {month_name} {self.current_year}:\n\n"
+            f"• Yes: Set all planned category amounts to $0.00\n"
+            f"• No: Overwrite with last month's planned amounts\n"
+            f"• Cancel: Keep current budget as-is",
+            parent=self.root
+        )
+        if choice is True:
+            self.service.zero_out_month(self.current_year, self.current_month)
+            self.current_budget = self.service.load_budget(self.current_year, self.current_month)
+            self.refresh_ui()
+        elif choice is False:
+            prev_year, prev_month = (self.current_year - 1, 12) if self.current_month == 1 else (self.current_year, self.current_month - 1)
+            copied = self.service.copy_previous_month_budget(self.current_year, self.current_month)
+            if copied:
+                self.current_budget = self.service.load_budget(self.current_year, self.current_month)
+                self.refresh_ui()
+            else:
+                messagebox.showinfo("No Previous Budget", f"No budget found for {calendar.month_name[prev_month]} {prev_year} to copy from.")
+                
     def refresh_ui(self):
         month_name = calendar.month_name[self.current_month]
         self.btn_month_selector.config(text=f"{month_name} {self.current_year}  ▾")

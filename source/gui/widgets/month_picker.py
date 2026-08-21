@@ -80,9 +80,9 @@ class MonthPickerPopup(tk.Toplevel):
         header_frame.pack(fill=tk.X, padx=12, pady=(10, 6))
 
         btn_prev = tk.Button(
-            header_frame, text="‹", font=("Helvetica", 14, "bold"),
-            relief=tk.FLAT, bg="#ffffff", activebackground="#f0f0f0",
-            cursor="hand2", command=self.prev_year
+        header_frame, text="<", font=("Helvetica", 12, "bold"),
+        relief=tk.FLAT, bg="#ffffff", activebackground="#f0f0f0",
+        cursor="hand2", command=self.prev_year
         )
         btn_prev.pack(side=tk.LEFT)
 
@@ -93,18 +93,24 @@ class MonthPickerPopup(tk.Toplevel):
         lbl_year.pack(side=tk.LEFT, expand=True)
 
         btn_next = tk.Button(
-            header_frame, text="›", font=("Helvetica", 14, "bold"),
+            header_frame, text="›", font=("Helvetica", 12, "bold"),
             relief=tk.FLAT, bg="#ffffff", activebackground="#f0f0f0",
             cursor="hand2", command=self.next_year
         )
         btn_next.pack(side=tk.RIGHT)
 
-        # 2. 4x3 Month Grid (Cols 0-3: Jan-Apr, May-Aug, Sep-Dec)
+        # # 2. 4x3 Month Grid (Cols 0-3: Jan-Apr, May-Aug, Sep-Dec)
         grid_frame = tk.Frame(self, bg="#ffffff")
         grid_frame.pack(padx=10, pady=(0, 10), fill=tk.BOTH, expand=True)
 
         for c in range(4):
             grid_frame.columnconfigure(c, weight=1)
+
+        # Query initialized budget months for the current display year
+        main_win = getattr(self.on_select, "__self__", None)
+        existing_months = []
+        if main_win and hasattr(main_win, "service"):
+            existing_months = main_win.service.repository.get_months_with_allocations(self.display_year)
 
         months = [calendar.month_abbr[i] for i in range(1, 13)]
         for idx, m_name in enumerate(months):
@@ -112,18 +118,22 @@ class MonthPickerPopup(tk.Toplevel):
             row, col = divmod(idx, 4)
 
             is_active = (self.display_year == self.selected_year and m_num == self.selected_month)
+            has_data = m_num in existing_months
+
+            # Dark text for months with budgets, muted gray for uninitialized months
+            text_fg = "#1e293b" if has_data else "#94a3b8"
 
             btn = tk.Button(
                 grid_frame,
                 text=m_name,
                 width=4,
                 relief=tk.RAISED if not is_active else tk.SUNKEN,
-                font=("Helvetica", 11),
+                font=("Helvetica", 11, "bold" if has_data else "normal"),
+                fg=text_fg,
                 cursor="hand2" if not is_active else "arrow",
                 command=lambda m=m_num: self.select_month(m)
             )
 
-            # Gray out & disable current month
             if is_active:
                 btn.config(state=tk.DISABLED)
 

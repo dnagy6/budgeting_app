@@ -3,7 +3,7 @@ from datetime import date
 from typing import List, Optional
 from sqlalchemy import select
 from source.persistence.database import SessionLocal
-from source.persistence.models import CategoryModel, TransactionModel
+from source.persistence.models import CategoryModel, TransactionModel, MonthlyAllocationModel
 
 
 class BudgetRepository:
@@ -14,25 +14,36 @@ class BudgetRepository:
     def add_category(
             self, 
             name: str,
-            category_type: str = "expense", 
-            allocated_amount: Decimal = Decimal("0.00")
+            category_type: str = "expense",
         ) -> CategoryModel:
-            """Creates and saves a new category."""
+            """Creates new category OR unarchives and existing one."""
             with SessionLocal() as session:
-                category = CategoryModel(
-                    name=name,
-                    category_type = category_type,
-                    allocated_amount=allocated_amount
-                )
-                session.add(category)
+                stmt = select(CategoryModel).where(CategoryModel.name == name)
+                category = session.scalars(stmt).first()
+
+                if category:
+                    category.is_archived = False
+                    category.category_type = category_type
+                else:
+                    category = CategoryModel(
+                        name=name,
+                        category_type=category_type,
+                        is_archived=False
+                    )
+                    session.add(category)
+
                 session.commit()
                 session.refresh(category)
                 return category
 
-    def get_all_categories(self) -> List[CategoryModel]:
+    def get_all_categories(self, include_archived: bool = False) -> List[CategoryModel]:
         """Retrieves all categories ordered alphabetically by name."""
         with SessionLocal() as session:
-            stmt = select(CategoryModel).order_by(CategoryModel.name)
+            stmt = select(CategoryModel)
+            if not include_archived:
+                stmt = stmt.where(CategoryModel.is_archived == False)
+            stmt = stmt.order_by(CategoryModel.name)
+
             return list(session.scalars(stmt).all())
 
     def get_category_by_id(self, category_id: int) -> Optional[CategoryModel]:
@@ -41,11 +52,11 @@ class BudgetRepository:
             return session.get(CategoryModel, category_id)
 
     def delete_category(self, category_id: int) -> bool:
-        """Deletes a category by ID. Returns True if deleted."""
+        """Soft-deletes a category envelope by archiving it."""
         with SessionLocal() as session:
             category = session.get(CategoryModel, category_id)
             if category:
-                session.delete(category)
+                category.is_archived = True
                 session.commit()
                 return True
             return False
@@ -55,30 +66,111 @@ class BudgetRepository:
             old_name: str,
             new_name: str,
             category_type: str,
-            allocated_amount: Decimal
     ) -> bool:
-        """Udpates an existing category record in SQLite"""
+        """Udpates category name and type."""
         with SessionLocal() as session:
             stmt = select(CategoryModel).where(CategoryModel.name == old_name)
             category = session.scalars(stmt).first()
             if category:
                 category.name= new_name
                 category.category_type = category_type
-                category.allocated_amount = allocated_amount
                 session.commit()
                 return True
             return False
 
     def delete_category_by_name(self, name:str) -> bool:
-        """Delete a category and its associated transaction from SQLite."""
+        """Soft-deletes an envelope by name."""
         with SessionLocal() as session:
             stmt = select(CategoryModel).where(CategoryModel.name == name)
             category = session.scalars(stmt).first()
             if category:
-                session.delete(category)
+                category.is_archived = True
                 session.commit()
                 return True
             return False
+
+    def set_monthly_allocation(
+            self,
+            category_id: int,
+            year: int,
+            month: int,
+            planned_amount: Decimal
+    ) -> MonthlyAllocationModel:
+        """Sets or updates the planned allocation for a specific category in a specific month."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyAllocationModel).where(
+                MonthlyAllocationModel.category_id == category_id,
+                MonthlyAllocationModel.year == year,
+                MonthlyAllocationModel.month == month
+            )
+            allocation = session.scalars(stmt).first()
+
+            if allocation:
+                allocation.planned_amount = planned_amount
+            else:
+                allocation = MonthlyAllocationModel(
+                    category_id=category_id,
+                    year=year,
+                    month=month,
+                    planned_amount=planned_amount
+                )
+                session.add(allocation)
+
+            session.commit()
+            session.refresh(allocation)
+            return allocation
+
+    def get_allocations_for_month(self, year: int, month: int) -> List[MonthlyAllocationModel]:
+        """Retrieves all planned allocations for a given month and year."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyAllocationModel).where(
+                MonthlyAllocationModel.year == year,
+                MonthlyAllocationModel.month == month
+            )
+            return list(session.scalars(stmt).all())
+
+    def copy_month_allocations(
+        self,
+        from_year: int,
+        from_month: int,
+        to_year: int,
+        to_month: int
+    ) -> bool:
+        """Copies all planned category amounts from a source month into a target month."""
+        with SessionLocal() as session:
+            source_allocs = session.scalars(
+                select(MonthlyAllocationModel).where(
+                    MonthlyAllocationModel.year == from_year,
+                    MonthlyAllocationModel.month == from_month
+                )
+            ).all()
+
+            if not source_allocs:
+                return False
+
+            for alloc in source_allocs:
+                # Check if target already has an allocation
+                existing = session.scalars(
+                    select(MonthlyAllocationModel).where(
+                        MonthlyAllocationModel.category_id == alloc.category_id,
+                        MonthlyAllocationModel.year == to_year,
+                        MonthlyAllocationModel.month == to_month
+                    )
+                ).first()
+
+                if existing:
+                    existing.planned_amount = alloc.planned_amount
+                else:
+                    new_alloc = MonthlyAllocationModel(
+                        category_id=alloc.category_id,
+                        year=to_year,
+                        month=to_month,
+                        planned_amount=alloc.planned_amount
+                    )
+                    session.add(new_alloc)
+
+            session.commit()
+            return True
 
     # TRANSACTION OPERATIONS
 
@@ -117,3 +209,41 @@ class BudgetRepository:
                 session.commit()
                 return True
             return False
+
+    # MONTHLY OPERATIONS
+
+    def delete_monthly_allocation(self, category_id: int, year: int, month: int) -> bool:
+        """Deletes only the allocation record for a specific category in a specific month."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyAllocationModel).where(
+                MonthlyAllocationModel.category_id == category_id,
+                MonthlyAllocationModel.year == year,
+                MonthlyAllocationModel.month == month
+            )
+            alloc = session.scalars(stmt).first()
+            if alloc:
+                session.delete(alloc)
+                session.commit()
+                return True
+            return False
+
+    def zero_out_month_allocations(self, year: int, month: int) -> bool:
+        """Sets all planned amounts for a specific month to $0.00."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyAllocationModel).where(
+                MonthlyAllocationModel.year == year,
+                MonthlyAllocationModel.month == month
+            )
+            allocations = session.scalars(stmt).all()
+            for alloc in allocations:
+                alloc.planned_amount = Decimal("0.00")
+            session.commit()
+            return True
+
+    def get_months_with_allocations(self, year: int) -> List[int]:
+        """Returns a list of month numbers (1-12) that have initialized budgets in a given year."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyAllocationModel.month).where(
+                MonthlyAllocationModel.year == year
+            ).distinct()
+            return list(session.scalars(stmt).all())
