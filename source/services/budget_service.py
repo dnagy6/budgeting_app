@@ -15,34 +15,39 @@ class BudgetService:
         self.repository = repository
 
     def load_budget(self, year: int, month: int) -> Budget:
-        """Loads categories, monthly allocations, and transactions into a Budget domain instance."""
+        """Loads groups, categories, monthly allocations, and tracked transactions into Budget."""
         budget = Budget(month=month, year=year)
-        
-        # 1. Fetch all category definitions (including archived) and allocations for this month
+
+        # 1. Fetch groups and categories from database
+        db_groups = self.repository.get_all_category_groups()
+        group_lookup = {g.id: g for g in db_groups}
+
         all_categories = self.repository.get_all_categories(include_archived=True)
         cat_lookup = {c.id: c for c in all_categories}
 
         monthly_allocations = self.repository.get_allocations_for_month(year, month)
         alloc_map = {alloc.category_id: float(alloc.planned_amount) for alloc in monthly_allocations}
 
-        # 2. Attach transactions
-        db_transactions = self.repository.get_all_transactions()
+        # 2. Fetch tracked transactions for this month
+        db_transactions = self.repository.get_all_transactions(status="tracked")
         month_transactions = [
             tx for tx in db_transactions
             if tx.trans_date and tx.trans_date.year == year and tx.trans_date.month == month
         ]
 
-        # 3. Only include categories that have an allocation OR transactions this month
+        # 3. Add active categories to budget and attach to groups
         active_cat_ids = set(alloc_map.keys()) | {tx.category_id for tx in month_transactions if tx.category_id}
 
         for cat_id in active_cat_ids:
             db_cat = cat_lookup.get(cat_id)
             if db_cat:
                 planned = alloc_map.get(cat_id, 0.0)
+                grp_name = group_lookup[db_cat.group_id].name if db_cat.group_id in group_lookup else None
                 budget.add_or_update_category(
                     name=db_cat.name,
                     category_type=db_cat.category_type,
-                    planned_amount=planned
+                    planned_amount=planned,
+                    group_name=grp_name
                 )
 
         # 4. Attach transactions to their envelopes
@@ -61,31 +66,45 @@ class BudgetService:
                     )
 
         return budget
-    
+
     def save_category(
-        self, 
-        budget: Budget, 
-        name: str, 
-        category_type: str, 
-        planned_amount: float, 
+        self,
+        budget: Budget,
+        name: str,
+        category_type: str,
+        planned_amount: float,
+        group_name: Optional[str] = None,
         old_name: Optional[str] = None
     ) -> Category:
-        """Saves category definition and stores the montly allocation for this SPECIFIC month."""
-        # 1. Update SQLite
+        """Saves category definition, sets its parent group, and stores the monthly allocation."""
+        group_id = None
+        if group_name:
+            grp = self.repository.add_category_group(name=group_name, group_type=category_type)
+            group_id = grp.id
+
+        # 1. Update or create category in DB
         if old_name:
             self.repository.update_category_name(
                 old_name=old_name,
                 new_name=name,
-                category_type=category_type,
+                category_type=category_type
             )
-            # Find category to fetch its ID
             categories = self.repository.get_all_categories(include_archived=True)
             db_cat = next((c for c in categories if c.name.lower() == name.lower()), None)
+            if db_cat and group_id is not None:
+                # Update group assignment
+                with SessionLocal() as session:
+                    c = session.get(CategoryModel, db_cat.id)
+                    if c:
+                        c.group_id = group_id
+                        session.commit()
         else:
             db_cat = self.repository.add_category(
                 name=name,
                 category_type=category_type,
+                group_id=group_id
             )
+
         # 2. Save month-specific allocation
         if db_cat:
             self.repository.set_monthly_allocation(
@@ -95,11 +114,12 @@ class BudgetService:
                 planned_amount=Decimal(str(planned_amount))
             )
 
-        # 3. Update In-Memory Domain Model
+        # 3. Update in-memory domain budget
         category, _ = budget.add_or_update_category(
             name=name,
             category_type=category_type,
-            planned_amount=planned_amount
+            planned_amount=planned_amount,
+            group_name=group_name
         )
         return category
 

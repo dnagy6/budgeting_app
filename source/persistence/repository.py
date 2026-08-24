@@ -3,11 +3,45 @@ from datetime import date
 from typing import List, Optional
 from sqlalchemy import select
 from source.persistence.database import SessionLocal
-from source.persistence.models import CategoryModel, TransactionModel, MonthlyAllocationModel
+from source.persistence.models import CategoryGroupModel, CategoryModel, TransactionModel, MonthlyAllocationModel
 
 
 class BudgetRepository:
     """Handles database CRUD operations for categories and transactions."""
+
+    # CATEGORY GROUP OPERATIONS
+
+    def add_category_group(self, name: str, group_type: str = "expense", sort_order: int = 0) -> CategoryGroupModel:
+        """Creates a new category group or returns existing one."""
+        with SessionLocal() as session:
+            stmt = select(CategoryGroupModel).where(CategoryGroupModel.name == name)
+            group = session.scalars(stmt).first()
+            if not group:
+                group = CategoryGroupModel(name=name, group_type=group_type, sort_order=sort_order)
+                session.add(group)
+                session.commit()
+                session.refresh(group)
+            return group
+
+    def get_all_category_groups(self) -> List[CategoryGroupModel]:
+        """Retrieves all category groups ordered by sort_order and name."""
+        with SessionLocal() as session:
+            stmt = select(CategoryGroupModel).order_by(CategoryGroupModel.sort_order, CategoryGroupModel.name)
+            return list(session.scalars(stmt).all())
+
+    def delete_category_group(self, group_id: int) -> bool:
+        """Deletes a category group and unlinks any child categories."""
+        with SessionLocal() as session:
+            group = session.get(CategoryGroupModel, group_id)
+            if group:
+                # Unlink child categories
+                stmt = select(CategoryModel).where(CategoryModel.group_id == group_id)
+                for cat in session.scalars(stmt).all():
+                    cat.group_id = None
+                session.delete(group)
+                session.commit()
+                return True
+            return False
 
     # CATEGORY OPERATIONS
 
@@ -15,8 +49,9 @@ class BudgetRepository:
             self, 
             name: str,
             category_type: str = "expense",
+            group_id: Optional[int] = None
         ) -> CategoryModel:
-            """Creates new category OR unarchives and existing one."""
+            """Creates a new category or unarchives an existing one and updates group link."""
             with SessionLocal() as session:
                 stmt = select(CategoryModel).where(CategoryModel.name == name)
                 category = session.scalars(stmt).first()
@@ -24,10 +59,13 @@ class BudgetRepository:
                 if category:
                     category.is_archived = False
                     category.category_type = category_type
+                    if group_id is not None:
+                        category.group_id = group_id
                 else:
                     category = CategoryModel(
                         name=name,
                         category_type=category_type,
+                        group_id = group_id,
                         is_archived=False
                     )
                     session.add(category)
@@ -179,7 +217,8 @@ class BudgetRepository:
         amount: Decimal, 
         trans_date: date, 
         category_id: Optional[int] = None, 
-        note: Optional[str] = None
+        note: Optional[str] = None,
+        status: str = "tracked"
     ) -> TransactionModel:
         """Creates and saves a new transaction."""
         with SessionLocal() as session:
@@ -187,25 +226,29 @@ class BudgetRepository:
                 amount=amount,
                 trans_date=trans_date,
                 category_id=category_id,
-                note=note
+                note=note,
+                status = status
             )
             session.add(transaction)
             session.commit()
             session.refresh(transaction)
             return transaction
 
-    def get_all_transactions(self) -> List[TransactionModel]:
-        """Retrieves all transactions sorted with newest dates first."""
+    def get_all_transactions(self, status: Optional[str] = None) -> List[TransactionModel]:
+        """Retrieves transactions ordered by date descending, optionally filtered by status."""
         with SessionLocal() as session:
-            stmt = select(TransactionModel).order_by(TransactionModel.trans_date.desc())
+            stmt = select(TransactionModel)
+            if status:
+                stmt = stmt.where(TransactionModel.status == status)
+            stmt = stmt.order_by(TransactionModel.trans_date.desc())
             return list(session.scalars(stmt).all())
 
-    def delete_transaction(self, transaction_id: int) -> bool:
-        """Deletes a transaction by ID. Returns True if deleted."""
+    def update_transaction_status(self, transaction_id: int, new_status: str) -> bool:
+        """Updates transaction status ('new', 'tracked', 'deleted', 'pending')."""
         with SessionLocal() as session:
-            transaction = session.get(TransactionModel, transaction_id)
-            if transaction:
-                session.delete(transaction)
+            tx = session.get(TransactionModel, transaction_id)
+            if tx:
+                tx.status = new_status
                 session.commit()
                 return True
             return False
