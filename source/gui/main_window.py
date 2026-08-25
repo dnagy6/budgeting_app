@@ -1,13 +1,9 @@
-import tkinter as tk
 import calendar
-
-#Widgets
-from source.gui.widgets.month_picker import MonthPickerPopup
-
 from datetime import datetime
+import tkinter as tk
 from tkinter import ttk, messagebox
 
-#Files
+# Domain & Services
 from source.domain.budget import Budget
 from source.domain.transaction import Transaction
 from source.gui.dialogs.category_dialog import AddCategoryDialog
@@ -16,64 +12,97 @@ from source.persistence.repository import BudgetRepository
 from source.services.budget_service import BudgetService
 from source.services.rollover_service import RolloverService
 
+# Widgets
+from source.gui.widgets.month_picker import MonthPickerPopup
+from source.gui.widgets.nav_sidebar import NavSidebar
 
 
 class BudgetApp:
-    def __init__(self, root, service: BudgetService):
+    def __init__(self, root: tk.Tk, service: BudgetService):
         self.root = root
         self.service = service
         self.rollover_service = RolloverService(self.service)
-        
-        self.root.title("Zero-Based Budgeting App")
-        self.root.geometry("820x550")
-        self.root.minsize(650, 450)
 
-        # Storage
+        self.root.title("Zero-Based Budgeting App")
+        self.root.geometry("1200x750")
+        self.root.minsize(1000, 600)
+
+        # Storage & State
         self.budgets = {}
         now = datetime.now()
         self.current_year = now.year
         self.current_month = now.month
         self.rollovers = {}
 
-        # Active budget w/ refactoring
+        # Active budget loading
         if self.service:
             self.current_budget = self.service.load_budget(self.current_year, self.current_month)
         else:
             self.current_budget = self.get_or_create_budget(self.current_year, self.current_month)
 
-        # Build UI
+        # Build 3-Column Layout Frames
+        self._build_layout_columns()
+
+        # Build UI Components into their respective columns
         self.create_header_ui()
         self.create_summary_ui()
         self.create_category_table_ui()
         self.create_action_buttons_ui()
+        self.create_right_rail_ui()
 
         # Render view
         self.refresh_ui()
 
-    def get_or_create_budget(self, year, month):
+    def _build_layout_columns(self):
+        """Creates the 3 main column containers."""
+        # Column 1: Left Navigation Rail (Fixed width)
+        self.nav_sidebar = NavSidebar(
+            self.root,
+            on_tab_change=self.on_nav_tab_changed,
+            on_profile_click=self.on_profile_clicked
+        )
+        self.nav_sidebar.pack(side=tk.LEFT, fill=tk.Y)
+
+        # Column 2: Center Budget Canvas (Expandable)
+        self.center_frame = tk.Frame(self.root, bg="#f8fafc")
+        self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Column 3: Right Transaction Rail (Fixed width ~320px)
+        self.right_frame = tk.Frame(
+            self.root,
+            bg="#ffffff",
+            width=320,
+            highlightthickness=1,
+            highlightbackground="#e2e8f0"
+        )
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        self.right_frame.pack_propagate(False)
+
+    def get_or_create_budget(self, year: int, month: int):
         key = (year, month)
         if key not in self.budgets:
             self.budgets[key] = Budget(month=month, year=year, categories=[])
         return self.budgets[key]
 
     def create_header_ui(self):
-        header_frame = ttk.Frame(self.root, padding="10")
+        header_frame = ttk.Frame(self.center_frame, padding="16 16 16 8")
         header_frame.pack(fill=tk.X)
 
         month_name = calendar.month_name[self.current_month]
         self.btn_month_selector = tk.Button(
             header_frame,
-            text = f"{month_name} {self.current_year} ▾",
-            font = ("Helvetica", 22, "bold"),
-            relief = tk.FLAT,
-            bd = 0,
-            highlightthickness=0,
-            cursor = "hand2",
-            command = self.open_month_picker
+            text=f"{month_name} {self.current_year} ▾",
+            font=("Helvetica", 20, "bold"),
+            relief=tk.FLAT,
+            bd=0,
+            bg="#f8fafc",
+            activebackground="#f1f5f9",
+            cursor="hand2",
+            command=self.open_month_picker
         )
-        self.btn_month_selector.pack(side = tk.LEFT)
+        self.btn_month_selector.pack(side=tk.LEFT)
 
-        # RESET BUTTON
+        # Reset Budget Button
         self.btn_reset_budget = ttk.Button(
             header_frame,
             text="Reset Budget ▾",
@@ -82,8 +111,8 @@ class BudgetApp:
         self.btn_reset_budget.pack(side=tk.RIGHT, padx=6)
 
     def create_summary_ui(self):
-        summary_frame = ttk.LabelFrame(self.root, text=" Monthly Totals ", padding="10")
-        summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        summary_frame = ttk.LabelFrame(self.center_frame, text=" Monthly Totals ", padding="10")
+        summary_frame.pack(fill=tk.X, padx=16, pady=5)
 
         ttk.Label(summary_frame, text="Total Income:", font=("Helvetica", 10, "bold")).grid(row=0, column=0, sticky=tk.W, padx=10)
         self.income_val_label = ttk.Label(summary_frame, text="$0.00", font=("Helvetica", 10))
@@ -98,8 +127,8 @@ class BudgetApp:
         self.unallocated_val_label.grid(row=0, column=5, sticky=tk.W)
 
     def create_category_table_ui(self):
-        table_frame = ttk.LabelFrame(self.root, text=" Category Envelopes ", padding="10")
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        table_frame = ttk.LabelFrame(self.center_frame, text=" Category Envelopes ", padding="10")
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=5)
 
         columns = ("type", "name", "planned", "actual", "remaining")
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
@@ -125,56 +154,84 @@ class BudgetApp:
         self.tree.bind("<Double-1>", lambda event: self.open_edit_category_dialog())
 
     def create_action_buttons_ui(self):
-        action_frame = ttk.Frame(self.root, padding="10")
+        action_frame = ttk.Frame(self.center_frame, padding="16 10 16 16")
         action_frame.pack(fill=tk.X)
 
-        btn_add_cat = ttk.Button(
+        self.btn_add_cat = ttk.Button(
             action_frame,
-            text="Add Category",
+            text="+ Add Category",
             command=self.open_add_category_dialog
         )
-        btn_add_cat.pack(side=tk.LEFT, padx=8)
+        self.btn_add_cat.pack(side=tk.LEFT, padx=5)
 
-        btn_edit_cat = ttk.Button(
+        self.btn_edit_cat = ttk.Button(
             action_frame,
             text="Edit Selected",
             command=self.open_edit_category_dialog
         )
-        btn_edit_cat.pack(side=tk.LEFT, padx=5)
+        self.btn_edit_cat.pack(side=tk.LEFT, padx=5)
 
-        btn_delete_cat = ttk.Button(
+        self.btn_delete_cat = ttk.Button(
             action_frame,
-            text = "Delete Selected",
-            command = self.delete_selected_category
+            text="Delete Selected",
+            command=self.delete_selected_category
         )
-        btn_delete_cat.pack(side=tk.LEFT, padx=5)
+        self.btn_delete_cat.pack(side=tk.LEFT, padx=5)
 
-        btn_log_tx = ttk.Button(
+        self.btn_log_tx = ttk.Button(
             action_frame,
             text="Log Transaction",
             command=self.open_log_transaction_dialog
         )
-        btn_log_tx.pack(side=tk.LEFT, padx=5)
+        self.btn_log_tx.pack(side=tk.LEFT, padx=5)
 
-        btn_rollover = ttk.Button(
+        self.btn_rollover = ttk.Button(
             action_frame,
-            text= "Close Month & Roll Over",
-            command= self.close_month_and_rollover
+            text="Close Month & Roll Over",
+            command=self.close_month_and_rollover
         )
-        btn_rollover.pack(side=tk.LEFT, padx=5)
+        self.btn_rollover.pack(side=tk.RIGHT, padx=5)
+
+    def create_right_rail_ui(self):
+        """Temporary placeholder for Phase 4 Transaction Stream panel."""
+        header = tk.Frame(self.right_frame, bg="#ffffff", pady=16, padx=16)
+        header.pack(fill=tk.X)
+
+        tk.Label(
+            header,
+            text="Transactions",
+            font=("Helvetica", 14, "bold"),
+            bg="#ffffff",
+            fg="#0f172a"
+        ).pack(side=tk.LEFT)
+
+        tab_bar = tk.Frame(self.right_frame, bg="#ffffff", padx=16)
+        tab_bar.pack(fill=tk.X)
+        for label in ["New (0)", "Tracked", "Deleted", "Pending"]:
+            lbl = tk.Label(tab_bar, text=label, font=("Helvetica", 9), fg="#64748b", bg="#f1f5f9", padx=6, pady=3)
+            lbl.pack(side=tk.LEFT, padx=2)
+
+        body = tk.Frame(self.right_frame, bg="#ffffff", padx=16, pady=24)
+        body.pack(fill=tk.BOTH, expand=True)
+        tk.Label(
+            body,
+            text="No transactions loaded.\nReady for Plaid stream.",
+            font=("Helvetica", 10),
+            fg="#94a3b8",
+            bg="#ffffff",
+            justify=tk.CENTER
+        ).pack(expand=True)
 
     def open_add_category_dialog(self):
-        """Opens dialog to create a brand new category envelope."""
         AddCategoryDialog(
             self.root,
             self.current_budget,
             self.refresh_ui,
             existing_category=None,
-            service = self.service
+            service=self.service
         )
 
     def open_edit_category_dialog(self):
-        """Opens dialog to edit an existing selected category envelope."""
         selected_item = self.tree.selection()
         if not selected_item:
             messagebox.showwarning("No Selection", "Please select a category from the table first.")
@@ -190,18 +247,16 @@ class BudgetApp:
                 self.current_budget,
                 self.refresh_ui,
                 existing_category=selected_cat,
-                service = self.service
+                service=self.service
             )
 
     def delete_selected_category(self):
-        """Deletes the selected category envelope after user confirmation."""
         selected_item = self.tree.selection()
         if not selected_item:
             messagebox.showwarning("No Selection", "Please select a category from the table first.")
             return
 
         cat_name = self.tree.item(selected_item[0], "values")[1]
-
         if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{cat_name}'?", parent=self.root):
             self.service.delete_category(self.current_budget, cat_name)
             self.refresh_ui()
@@ -211,16 +266,14 @@ class BudgetApp:
             messagebox.showwarning("No Categories", "Please add at least one category envelope before logging a transaction.")
             return
         LogTransactionDialog(
-            self.root, 
-            self.current_budget, 
+            self.root,
+            self.current_budget,
             self.refresh_ui,
-            service = self.service
+            service=self.service
         )
 
     def close_month_and_rollover(self):
-        """Closes current month, calculates surplus, and rolls forward into the next month."""
         surplus = self.rollover_service.calculate_month_surplus(self.current_budget)
-        
         confirm = messagebox.askyesno(
             "Close Month & Roll Over",
             f"End budget for {self.current_month}/{self.current_year}?\n\n"
@@ -228,35 +281,28 @@ class BudgetApp:
             "This will advance the app to next month with this balance.",
             parent=self.root
         )
-
         if confirm:
-            # Advance budget and carry funds forward
             self.current_budget = self.rollover_service.close_and_rollover_month(self.current_budget)
             self.current_year = self.current_budget.year
             self.current_month = self.current_budget.month
-
             self.refresh_ui()
             messagebox.showinfo(
                 "Month Rolled Over",
                 f"Successfully opened {self.current_month}/{self.current_year}!",
                 parent=self.root
             )
-    
-    def placeholder_action(self):
-        messagebox.showinfo("In Progress", "This button will trigger in our next step!")
 
     def open_month_picker(self):
         MonthPickerPopup(
-            parent_button = self.btn_month_selector,
-            initial_year = self.current_year,
-            initial_month = self.current_month,
-            on_select_callback= self.change_budget_month
+            parent_button=self.btn_month_selector,
+            initial_year=self.current_year,
+            initial_month=self.current_month,
+            on_select_callback=self.change_budget_month
         )
 
     def change_budget_month(self, year: int, month: int):
         month_name = calendar.month_name[month]
 
-        # Check if the selected month already has initialized allocations
         if not self.service.has_budget_for_month(year, month):
             prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
             has_prev = self.service.has_budget_for_month(prev_year, prev_month)
@@ -313,16 +359,22 @@ class BudgetApp:
                 self.refresh_ui()
             else:
                 messagebox.showinfo("No Previous Budget", f"No budget found for {calendar.month_name[prev_month]} {prev_year} to copy from.")
-                
+
+    def on_nav_tab_changed(self, tab_id: str):
+        pass
+
+    def on_profile_clicked(self):
+        pass
+
     def refresh_ui(self):
         month_name = calendar.month_name[self.current_month]
-        self.btn_month_selector.config(text=f"{month_name} {self.current_year}  ▾")
+        self.btn_month_selector.config(text=f"{month_name} {self.current_year} ▾")
 
         total_income = self.current_budget.get_total_income()
         total_allocated = self.current_budget.get_total_allocated()
         unallocated = self.current_budget.get_remaining_to_budget()
 
-        # Updates Summary Labels
+        # Update Summary Labels
         self.income_val_label.config(text=f"${total_income:,.2f}")
         self.allocated_val_label.config(text=f"${total_allocated:,.2f}")
 
@@ -351,4 +403,3 @@ class BudgetApp:
                     f"${remaining:,.2f}"
                 )
             )
-
