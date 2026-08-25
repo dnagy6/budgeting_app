@@ -247,11 +247,11 @@ class BudgetApp:
     def delete_category_group(self, group_name: str):
         if messagebox.askyesno(
             "Delete Category Group",
-            f"Are you sure you want to delete the group '{group_name}'?\n\n"
-            "Child envelopes will remain in the database but become unassigned.",
+            f"Are you sure you want to delete the group '{group_name}' for {calendar.month_name[self.current_month]} {self.current_year}?\n\n"
+            "This will remove its envelopes for this month without affecting other months.",
             parent=self.root
         ):
-            self.service.delete_category_group(group_name)
+            self.service.delete_category_group(self.current_budget, group_name)
             self.reload_and_refresh()
 
     def handle_move_category_group(self, group_name: str, direction: str):
