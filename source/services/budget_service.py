@@ -18,31 +18,36 @@ class BudgetService:
         """Loads groups, categories, monthly allocations, and tracked transactions into Budget."""
         budget = Budget(month=month, year=year)
 
-        # 1. Fetch groups and categories from database
+        # 1. Fetch groups from DB and initialize them on budget
         db_groups = self.repository.get_all_category_groups()
         group_lookup = {g.id: g for g in db_groups}
+        for db_grp in db_groups:
+            budget.get_or_create_group(name=db_grp.name, group_type=db_grp.group_type)
 
+        # 2. Fetch categories and allocations
         all_categories = self.repository.get_all_categories(include_archived=True)
         cat_lookup = {c.id: c for c in all_categories}
 
         monthly_allocations = self.repository.get_allocations_for_month(year, month)
         alloc_map = {alloc.category_id: float(alloc.planned_amount) for alloc in monthly_allocations}
 
-        # 2. Fetch tracked transactions for this month
+        # 3. Fetch tracked transactions for this month
         db_transactions = self.repository.get_all_transactions(status="tracked")
         month_transactions = [
             tx for tx in db_transactions
             if tx.trans_date and tx.trans_date.year == year and tx.trans_date.month == month
         ]
 
-        # 3. Add active categories to budget and attach to groups
+        # 4. Add active categories to budget and attach to groups
         active_cat_ids = set(alloc_map.keys()) | {tx.category_id for tx in month_transactions if tx.category_id}
 
         for cat_id in active_cat_ids:
             db_cat = cat_lookup.get(cat_id)
             if db_cat:
                 planned = alloc_map.get(cat_id, 0.0)
+                # Assign to group only if linked
                 grp_name = group_lookup[db_cat.group_id].name if db_cat.group_id in group_lookup else None
+
                 budget.add_or_update_category(
                     name=db_cat.name,
                     category_type=db_cat.category_type,
@@ -50,7 +55,7 @@ class BudgetService:
                     group_name=grp_name
                 )
 
-        # 4. Attach transactions to their envelopes
+        # 5. Attach transactions to their envelopes
         for db_tx in month_transactions:
             db_cat = cat_lookup.get(db_tx.category_id)
             if db_cat:
@@ -87,17 +92,11 @@ class BudgetService:
             self.repository.update_category_name(
                 old_name=old_name,
                 new_name=name,
-                category_type=category_type
+                category_type=category_type,
+                group_id=group_id
             )
             categories = self.repository.get_all_categories(include_archived=True)
             db_cat = next((c for c in categories if c.name.lower() == name.lower()), None)
-            if db_cat and group_id is not None:
-                # Update group assignment
-                with SessionLocal() as session:
-                    c = session.get(CategoryModel, db_cat.id)
-                    if c:
-                        c.group_id = group_id
-                        session.commit()
         else:
             db_cat = self.repository.add_category(
                 name=name,
@@ -138,6 +137,10 @@ class BudgetService:
             budget.categories.remove(cat)
             return True
         return False
+
+    def delete_category_group(self, group_name: str) -> bool:
+        """Removes a parent category group and unlinks child categories."""
+        return self.repository.delete_category_group_by_name(group_name)
     
     def copy_previous_month_budget(
             self,

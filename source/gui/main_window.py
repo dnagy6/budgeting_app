@@ -5,14 +5,16 @@ from tkinter import ttk, messagebox
 
 # Domain & Services
 from source.domain.budget import Budget
-from source.domain.transaction import Transaction
+from source.domain.category import Category
 from source.gui.dialogs.category_dialog import AddCategoryDialog
+from source.gui.dialogs.category_group_dialog import AddCategoryGroupDialog
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
 from source.persistence.repository import BudgetRepository
 from source.services.budget_service import BudgetService
 from source.services.rollover_service import RolloverService
 
 # Widgets
+from source.gui.widgets.category_group_card import CategoryGroupCard
 from source.gui.widgets.month_picker import MonthPickerPopup
 from source.gui.widgets.nav_sidebar import NavSidebar
 
@@ -32,30 +34,28 @@ class BudgetApp:
         now = datetime.now()
         self.current_year = now.year
         self.current_month = now.month
-        self.rollovers = {}
 
         # Active budget loading
         if self.service:
             self.current_budget = self.service.load_budget(self.current_year, self.current_month)
         else:
-            self.current_budget = self.get_or_create_budget(self.current_year, self.current_month)
+            self.current_budget = Budget(month=self.current_month, year=self.current_year)
 
         # Build 3-Column Layout Frames
         self._build_layout_columns()
 
-        # Build UI Components into their respective columns
+        # Build UI Components
         self.create_header_ui()
         self.create_summary_ui()
-        self.create_category_table_ui()
-        self.create_action_buttons_ui()
+        self.create_scrollable_groups_canvas()
+        self.create_footer_actions_ui()
         self.create_right_rail_ui()
 
         # Render view
         self.refresh_ui()
 
     def _build_layout_columns(self):
-        """Creates the 3 main column containers."""
-        # Column 1: Left Navigation Rail (Fixed width)
+        # Column 1: Left Navigation Rail
         self.nav_sidebar = NavSidebar(
             self.root,
             on_tab_change=self.on_nav_tab_changed,
@@ -78,21 +78,15 @@ class BudgetApp:
         self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
         self.right_frame.pack_propagate(False)
 
-    def get_or_create_budget(self, year: int, month: int):
-        key = (year, month)
-        if key not in self.budgets:
-            self.budgets[key] = Budget(month=month, year=year, categories=[])
-        return self.budgets[key]
-
     def create_header_ui(self):
-        header_frame = ttk.Frame(self.center_frame, padding="16 16 16 8")
+        header_frame = tk.Frame(self.center_frame, bg="#f8fafc", padx=20, pady=16)
         header_frame.pack(fill=tk.X)
 
         month_name = calendar.month_name[self.current_month]
         self.btn_month_selector = tk.Button(
             header_frame,
             text=f"{month_name} {self.current_year} ▾",
-            font=("Helvetica", 20, "bold"),
+            font=("Helvetica", 22, "bold"),
             relief=tk.FLAT,
             bd=0,
             bg="#f8fafc",
@@ -102,7 +96,6 @@ class BudgetApp:
         )
         self.btn_month_selector.pack(side=tk.LEFT)
 
-        # Reset Budget Button
         self.btn_reset_budget = ttk.Button(
             header_frame,
             text="Reset Budget ▾",
@@ -111,99 +104,84 @@ class BudgetApp:
         self.btn_reset_budget.pack(side=tk.RIGHT, padx=6)
 
     def create_summary_ui(self):
-        summary_frame = ttk.LabelFrame(self.center_frame, text=" Monthly Totals ", padding="10")
-        summary_frame.pack(fill=tk.X, padx=16, pady=5)
+        summary_card = tk.Frame(self.center_frame, bg="#ffffff", highlightthickness=1, highlightbackground="#e2e8f0", padx=16, pady=14)
+        summary_card.pack(fill=tk.X, padx=20, pady=(0, 10))
 
-        ttk.Label(summary_frame, text="Total Income:", font=("Helvetica", 10, "bold")).grid(row=0, column=0, sticky=tk.W, padx=10)
-        self.income_val_label = ttk.Label(summary_frame, text="$0.00", font=("Helvetica", 10))
-        self.income_val_label.grid(row=0, column=1, sticky=tk.W, padx=(0, 20))
+        # Income Total
+        col1 = tk.Frame(summary_card, bg="#ffffff")
+        col1.pack(side=tk.LEFT, expand=True)
+        tk.Label(col1, text="TOTAL INCOME", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
+        self.income_val_label = tk.Label(col1, text="$0.00", font=("Helvetica", 14, "bold"), fg="#0f172a", bg="#ffffff")
+        self.income_val_label.pack(anchor="w")
 
-        ttk.Label(summary_frame, text="Total Allocated:", font=("Helvetica", 10, "bold")).grid(row=0, column=2, sticky=tk.W, padx=10)
-        self.allocated_val_label = ttk.Label(summary_frame, text="$0.00", font=("Helvetica", 10))
-        self.allocated_val_label.grid(row=0, column=3, sticky=tk.W, padx=(0, 20))
+        # Allocated Total
+        col2 = tk.Frame(summary_card, bg="#ffffff")
+        col2.pack(side=tk.LEFT, expand=True)
+        tk.Label(col2, text="TOTAL ALLOCATED", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
+        self.allocated_val_label = tk.Label(col2, text="$0.00", font=("Helvetica", 14, "bold"), fg="#0f172a", bg="#ffffff")
+        self.allocated_val_label.pack(anchor="w")
 
-        ttk.Label(summary_frame, text="Left to Budget:", font=("Helvetica", 10, "bold")).grid(row=0, column=4, sticky=tk.W, padx=10)
-        self.unallocated_val_label = ttk.Label(summary_frame, text="$0.00", font=("Helvetica", 10, "bold"))
-        self.unallocated_val_label.grid(row=0, column=5, sticky=tk.W)
+        # Left to Budget
+        col3 = tk.Frame(summary_card, bg="#ffffff")
+        col3.pack(side=tk.LEFT, expand=True)
+        tk.Label(col3, text="LEFT TO BUDGET", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
+        self.unallocated_val_label = tk.Label(col3, text="$0.00", font=("Helvetica", 14, "bold"), fg="#16a34a", bg="#ffffff")
+        self.unallocated_val_label.pack(anchor="w")
 
-    def create_category_table_ui(self):
-        table_frame = ttk.LabelFrame(self.center_frame, text=" Category Envelopes ", padding="10")
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=5)
+    def create_scrollable_groups_canvas(self):
+        """Creates a scrollable canvas container for CategoryGroupCards."""
+        container = tk.Frame(self.center_frame, bg="#f8fafc")
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
-        columns = ("type", "name", "planned", "actual", "remaining")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
+        self.canvas = tk.Canvas(container, bg="#f8fafc", bd=0, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.groups_inner_frame = tk.Frame(self.canvas, bg="#f8fafc")
 
-        self.tree.heading("type", text="Type")
-        self.tree.heading("name", text="Category Name")
-        self.tree.heading("planned", text="Planned")
-        self.tree.heading("actual", text="Actual (Spent/Received)")
-        self.tree.heading("remaining", text="Remaining / Pending")
-
-        self.tree.column("type", width=80, anchor=tk.CENTER)
-        self.tree.column("name", width=180, anchor=tk.W)
-        self.tree.column("planned", width=110, anchor=tk.E)
-        self.tree.column("actual", width=150, anchor=tk.E)
-        self.tree.column("remaining", width=150, anchor=tk.E)
-
-        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
-
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.tree.bind("<Double-1>", lambda event: self.open_edit_category_dialog())
-
-    def create_action_buttons_ui(self):
-        action_frame = ttk.Frame(self.center_frame, padding="16 10 16 16")
-        action_frame.pack(fill=tk.X)
-
-        self.btn_add_cat = ttk.Button(
-            action_frame,
-            text="+ Add Category",
-            command=self.open_add_category_dialog
+        self.groups_inner_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
-        self.btn_add_cat.pack(side=tk.LEFT, padx=5)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.groups_inner_frame, anchor="nw")
 
-        self.btn_edit_cat = ttk.Button(
-            action_frame,
-            text="Edit Selected",
-            command=self.open_edit_category_dialog
+        self.canvas.bind(
+            "<Configure>",
+            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
         )
-        self.btn_edit_cat.pack(side=tk.LEFT, padx=5)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.btn_delete_cat = ttk.Button(
-            action_frame,
-            text="Delete Selected",
-            command=self.delete_selected_category
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def create_footer_actions_ui(self):
+        footer_frame = tk.Frame(self.center_frame, bg="#f8fafc", padx=20, pady=10)
+        footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        btn_add_group = ttk.Button(
+            footer_frame,
+            text="+ Add Category Group",
+            command=self.open_add_group_dialog
         )
-        self.btn_delete_cat.pack(side=tk.LEFT, padx=5)
+        btn_add_group.pack(side=tk.LEFT, padx=(0, 6))
 
-        self.btn_log_tx = ttk.Button(
-            action_frame,
+        btn_log_tx = ttk.Button(
+            footer_frame,
             text="Log Transaction",
             command=self.open_log_transaction_dialog
         )
-        self.btn_log_tx.pack(side=tk.LEFT, padx=5)
+        btn_log_tx.pack(side=tk.LEFT, padx=6)
 
-        self.btn_rollover = ttk.Button(
-            action_frame,
+        btn_rollover = ttk.Button(
+            footer_frame,
             text="Close Month & Roll Over",
             command=self.close_month_and_rollover
         )
-        self.btn_rollover.pack(side=tk.RIGHT, padx=5)
+        btn_rollover.pack(side=tk.RIGHT)
 
     def create_right_rail_ui(self):
-        """Temporary placeholder for Phase 4 Transaction Stream panel."""
         header = tk.Frame(self.right_frame, bg="#ffffff", pady=16, padx=16)
         header.pack(fill=tk.X)
 
-        tk.Label(
-            header,
-            text="Transactions",
-            font=("Helvetica", 14, "bold"),
-            bg="#ffffff",
-            fg="#0f172a"
-        ).pack(side=tk.LEFT)
+        tk.Label(header, text="Transactions", font=("Helvetica", 14, "bold"), bg="#ffffff", fg="#0f172a").pack(side=tk.LEFT)
 
         tab_bar = tk.Frame(self.right_frame, bg="#ffffff", padx=16)
         tab_bar.pack(fill=tk.X)
@@ -222,44 +200,46 @@ class BudgetApp:
             justify=tk.CENTER
         ).pack(expand=True)
 
-    def open_add_category_dialog(self):
-        AddCategoryDialog(
+    def open_add_group_dialog(self):
+        AddCategoryGroupDialog(
             self.root,
-            self.current_budget,
-            self.refresh_ui,
-            existing_category=None,
+            on_success_callback=self.reload_and_refresh,
             service=self.service
         )
 
-    def open_edit_category_dialog(self):
-        selected_item = self.tree.selection()
-        if not selected_item:
-            messagebox.showwarning("No Selection", "Please select a category from the table first.")
-            return
+    def open_add_category_to_group(self, group_name: str, group_type: str):
+        AddCategoryDialog(
+            self.root,
+            self.current_budget,
+            on_success_callback=self.reload_and_refresh,
+            default_group=group_name,
+            default_type=group_type,
+            service=self.service
+        )
 
-        item_values = self.tree.item(selected_item[0], "values")
-        cat_name = item_values[1]
-        selected_cat = self.current_budget.get_category_by_name(cat_name)
+    def open_edit_category(self, category: Category):
+        AddCategoryDialog(
+            self.root,
+            self.current_budget,
+            on_success_callback=self.reload_and_refresh,
+            existing_category=category,
+            service=self.service
+        )
 
-        if selected_cat:
-            AddCategoryDialog(
-                self.root,
-                self.current_budget,
-                self.refresh_ui,
-                existing_category=selected_cat,
-                service=self.service
-            )
-
-    def delete_selected_category(self):
-        selected_item = self.tree.selection()
-        if not selected_item:
-            messagebox.showwarning("No Selection", "Please select a category from the table first.")
-            return
-
-        cat_name = self.tree.item(selected_item[0], "values")[1]
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{cat_name}'?", parent=self.root):
+    def delete_category_envelope(self, cat_name: str):
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{cat_name}' from this month?", parent=self.root):
             self.service.delete_category(self.current_budget, cat_name)
-            self.refresh_ui()
+            self.reload_and_refresh()
+
+    def delete_category_group(self, group_name: str):
+        if messagebox.askyesno(
+            "Delete Category Group",
+            f"Are you sure you want to delete the group '{group_name}'?\n\n"
+            "Child envelopes will remain in the database but become unassigned.",
+            parent=self.root
+        ):
+            self.service.delete_category_group(group_name)
+            self.reload_and_refresh()
 
     def open_log_transaction_dialog(self):
         if not self.current_budget.categories:
@@ -268,17 +248,21 @@ class BudgetApp:
         LogTransactionDialog(
             self.root,
             self.current_budget,
-            self.refresh_ui,
+            self.reload_and_refresh,
             service=self.service
         )
+
+    def reload_and_refresh(self):
+        self.current_budget = self.service.load_budget(self.current_year, self.current_month)
+        self.refresh_ui()
 
     def close_month_and_rollover(self):
         surplus = self.rollover_service.calculate_month_surplus(self.current_budget)
         confirm = messagebox.askyesno(
             "Close Month & Roll Over",
             f"End budget for {self.current_month}/{self.current_year}?\n\n"
-            f"Calculated leftover cash pool: ${surplus:,.2f}\n"
-            "This will advance the app to next month with this balance.",
+            f"Leftover pool: ${surplus:,.2f}\n"
+            "This will advance to next month.",
             parent=self.root
         )
         if confirm:
@@ -286,11 +270,6 @@ class BudgetApp:
             self.current_year = self.current_budget.year
             self.current_month = self.current_budget.month
             self.refresh_ui()
-            messagebox.showinfo(
-                "Month Rolled Over",
-                f"Successfully opened {self.current_month}/{self.current_year}!",
-                parent=self.root
-            )
 
     def open_month_picker(self):
         MonthPickerPopup(
@@ -311,7 +290,7 @@ class BudgetApp:
                 choice = messagebox.askyesnocancel(
                     f"Start Planning for {month_name} {year}",
                     f"No budget found for {month_name} {year}.\n\n"
-                    f"• Yes: Copy planned categories & amounts from previous month\n"
+                    f"• Yes: Copy categories & amounts from previous month\n"
                     f"• No: Start fresh with $0.00 planned\n"
                     f"• Cancel: Return to current view",
                     parent=self.root
@@ -334,31 +313,27 @@ class BudgetApp:
 
         self.current_year = year
         self.current_month = month
-        self.current_budget = self.service.load_budget(year, month)
-        self.refresh_ui()
+        self.reload_and_refresh()
 
     def show_reset_budget_options(self):
         month_name = calendar.month_name[self.current_month]
         choice = messagebox.askyesnocancel(
             f"Reset {month_name} {self.current_year} Budget",
-            f"Choose a reset option for {month_name} {self.current_year}:\n\n"
-            f"• Yes: Set all planned category amounts to $0.00\n"
+            f"Choose a reset option:\n\n"
+            f"• Yes: Set all planned amounts to $0.00\n"
             f"• No: Overwrite with last month's planned amounts\n"
             f"• Cancel: Keep current budget as-is",
             parent=self.root
         )
         if choice is True:
             self.service.zero_out_month(self.current_year, self.current_month)
-            self.current_budget = self.service.load_budget(self.current_year, self.current_month)
-            self.refresh_ui()
+            self.reload_and_refresh()
         elif choice is False:
-            prev_year, prev_month = (self.current_year - 1, 12) if self.current_month == 1 else (self.current_year, self.current_month - 1)
             copied = self.service.copy_previous_month_budget(self.current_year, self.current_month)
             if copied:
-                self.current_budget = self.service.load_budget(self.current_year, self.current_month)
-                self.refresh_ui()
+                self.reload_and_refresh()
             else:
-                messagebox.showinfo("No Previous Budget", f"No budget found for {calendar.month_name[prev_month]} {prev_year} to copy from.")
+                messagebox.showinfo("No Previous Budget", "No previous budget found to copy from.")
 
     def on_nav_tab_changed(self, tab_id: str):
         pass
@@ -374,32 +349,38 @@ class BudgetApp:
         total_allocated = self.current_budget.get_total_allocated()
         unallocated = self.current_budget.get_remaining_to_budget()
 
-        # Update Summary Labels
         self.income_val_label.config(text=f"${total_income:,.2f}")
         self.allocated_val_label.config(text=f"${total_allocated:,.2f}")
 
         if unallocated < 0:
-            self.unallocated_val_label.config(text=f"${unallocated:,.2f}", foreground="red")
+            self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#dc2626")
         else:
-            self.unallocated_val_label.config(text=f"${unallocated:,.2f}", foreground="black")
+            self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#16a34a")
 
-        # Repopulate Table
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # Clear existing group cards
+        for child in self.groups_inner_frame.winfo_children():
+            child.destroy()
 
-        for cat in self.current_budget.categories:
-            cat_type = cat.category_type.capitalize()
-            actual = cat.get_actual_amount()
-            remaining = cat.get_remaining_amount()
-
-            self.tree.insert(
-                "",
-                tk.END,
-                values=(
-                    cat_type,
-                    cat.name,
-                    f"${cat.planned_amount:,.2f}",
-                    f"${actual:,.2f}",
-                    f"${remaining:,.2f}"
-                )
+        if not self.current_budget.groups:
+            lbl_empty = tk.Label(
+                self.groups_inner_frame,
+                text="No category groups created yet.\nClick '+ Add Category Group' below to start organizing your budget.",
+                font=("Helvetica", 11),
+                fg="#94a3b8",
+                bg="#f8fafc",
+                pady=40
             )
+            lbl_empty.pack(fill=tk.BOTH, expand=True)
+            return
+
+        # Render each CategoryGroupCard
+        for grp in self.current_budget.groups:
+            card = CategoryGroupCard(
+                self.groups_inner_frame,
+                group=grp,
+                on_add_category=self.open_add_category_to_group,
+                on_edit_category=self.open_edit_category,
+                on_delete_category=self.delete_category_envelope,
+                on_delete_group=self.delete_category_group
+            )
+            card.pack(fill=tk.X, pady=(0, 12))

@@ -43,6 +43,21 @@ class BudgetRepository:
                 return True
             return False
 
+    def delete_category_group_by_name(self, name: str) -> bool:
+        """Deletes a category group by name and unlinks its child categories."""
+        with SessionLocal() as session:
+            stmt = select(CategoryGroupModel).where(CategoryGroupModel.name == name.strip())
+            group = session.scalars(stmt).first()
+            if group:
+                # Unlink child categories from this group so they don't get deleted
+                stmt_cats = select(CategoryModel).where(CategoryModel.group_id == group.id)
+                for cat in session.scalars(stmt_cats).all():
+                    cat.group_id = None
+                session.delete(group)
+                session.commit()
+                return True
+            return False
+
     # CATEGORY OPERATIONS
 
     def add_category(
@@ -100,18 +115,21 @@ class BudgetRepository:
             return False
 
     def update_category_name(
-            self,
-            old_name: str,
-            new_name: str,
-            category_type: str,
+        self,
+        old_name: str,
+        new_name: str,
+        category_type: str,
+        group_id: Optional[int] = None
     ) -> bool:
-        """Udpates category name and type."""
+        """Updates category name, type, and optional parent group link."""
         with SessionLocal() as session:
             stmt = select(CategoryModel).where(CategoryModel.name == old_name)
             category = session.scalars(stmt).first()
             if category:
-                category.name= new_name
+                category.name = new_name
                 category.category_type = category_type
+                if group_id is not None:
+                    category.group_id = group_id
                 session.commit()
                 return True
             return False
