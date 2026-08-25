@@ -310,6 +310,16 @@ class BudgetRepository:
                 return True
             return False
 
+    def delete_transaction(self, transaction_id: int) -> bool:
+        """Permanently deletes a transaction from the database."""
+        with SessionLocal() as session:
+            tx = session.get(TransactionModel, transaction_id)
+            if tx:
+                session.delete(tx)
+                session.commit()
+                return True
+            return False
+
     # MONTHLY OPERATIONS
 
     def delete_monthly_allocation(self, category_id: int, year: int, month: int) -> bool:

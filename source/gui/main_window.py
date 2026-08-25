@@ -17,6 +17,7 @@ from source.services.rollover_service import RolloverService
 from source.gui.widgets.category_group_card import CategoryGroupCard
 from source.gui.widgets.month_picker import MonthPickerPopup
 from source.gui.widgets.nav_sidebar import NavSidebar
+from source.gui.widgets.transaction_panel import TransactionPanel
 
 
 class BudgetApp:
@@ -67,11 +68,11 @@ class BudgetApp:
         self.center_frame = tk.Frame(self.root, bg="#f8fafc")
         self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Column 3: Right Transaction Rail (Fixed width ~320px)
+        # Column 3: Right Transaction Rail (Fixed width 350px)
         self.right_frame = tk.Frame(
             self.root,
             bg="#ffffff",
-            width=320,
+            width=350,
             highlightthickness=1,
             highlightbackground="#e2e8f0"
         )
@@ -178,27 +179,13 @@ class BudgetApp:
         btn_rollover.pack(side=tk.RIGHT)
 
     def create_right_rail_ui(self):
-        header = tk.Frame(self.right_frame, bg="#ffffff", pady=16, padx=16)
-        header.pack(fill=tk.X)
-
-        tk.Label(header, text="Transactions", font=("Helvetica", 14, "bold"), bg="#ffffff", fg="#0f172a").pack(side=tk.LEFT)
-
-        tab_bar = tk.Frame(self.right_frame, bg="#ffffff", padx=16)
-        tab_bar.pack(fill=tk.X)
-        for label in ["New (0)", "Tracked", "Deleted", "Pending"]:
-            lbl = tk.Label(tab_bar, text=label, font=("Helvetica", 9), fg="#64748b", bg="#f1f5f9", padx=6, pady=3)
-            lbl.pack(side=tk.LEFT, padx=2)
-
-        body = tk.Frame(self.right_frame, bg="#ffffff", padx=16, pady=24)
-        body.pack(fill=tk.BOTH, expand=True)
-        tk.Label(
-            body,
-            text="No transactions loaded.\nReady for Plaid stream.",
-            font=("Helvetica", 10),
-            fg="#94a3b8",
-            bg="#ffffff",
-            justify=tk.CENTER
-        ).pack(expand=True)
+        """Mounts the full interactive TransactionPanel in the right rail."""
+        self.transaction_panel = TransactionPanel(
+            self.right_frame,
+            service=self.service,
+            on_data_changed=self.reload_and_refresh
+        )
+        self.transaction_panel.pack(fill=tk.BOTH, expand=True)
 
     def open_add_group_dialog(self):
         AddCategoryGroupDialog(
@@ -388,6 +375,10 @@ class BudgetApp:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#dc2626")
         else:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#16a34a")
+
+        # Synchronize Transaction Panel period and items
+        if hasattr(self, "transaction_panel"):
+            self.transaction_panel.set_period(self.current_year, self.current_month)
 
         # 1. Capture current expansion states before destroying cards
         card_states = {

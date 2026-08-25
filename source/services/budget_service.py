@@ -182,6 +182,8 @@ class BudgetService:
     def zero_out_month(self, year: int, month: int):
         """Sets all planned amounts in the current month to $0.00."""
         self.repository.zero_out_month_allocations(year, month)
+
+    # ---- TRANSACTIONS ----
         
     def log_transaction(
         self, 
@@ -221,3 +223,36 @@ class BudgetService:
         tx = Transaction(amount=amount, description=description, date=date_str)
         cat.add_transaction(tx)
         return tx
+
+    # TRANSACTION STREAM & STAGING OPERATIONS
+
+    def get_transactions_by_status(
+        self,
+        year: int,
+        month: int,
+        status: str = "tracked"
+    ) -> list:
+        """Fetches transactions matching a specific status and month/year."""
+        all_txs = self.repository.get_all_transactions(status=status)
+        return [
+            tx for tx in all_txs
+            if tx.trans_date and tx.trans_date.year == year and tx.trans_date.month == month
+        ]
+
+    def get_transaction_status_counts(self, year: int, month: int) -> dict[str, int]:
+        """Returns the number of transactions per status tab for a given month."""
+        counts = {"new": 0, "tracked": 0, "deleted": 0, "pending": 0}
+        all_txs = self.repository.get_all_transactions()
+        for tx in all_txs:
+            if tx.trans_date and tx.trans_date.year == year and tx.trans_date.month == month:
+                if tx.status in counts:
+                    counts[tx.status] += 1
+        return counts
+
+    def update_transaction_status(self, transaction_id: int, new_status: str) -> bool:
+        """Transitions transaction status ('new', 'tracked', 'deleted', 'pending')."""
+        return self.repository.update_transaction_status(transaction_id, new_status)
+
+    def hard_delete_transaction(self, transaction_id: int) -> bool:
+        """Permanently removes a transaction from SQLite."""
+        return self.repository.delete_transaction(transaction_id)
