@@ -122,6 +122,14 @@ class BudgetService:
         )
         return category
 
+    def move_category_group(self, group_name: str, direction: str) -> bool:
+        """Shifts category group order up or down."""
+        return self.repository.move_category_group(group_name, direction)
+
+    def reorder_category_groups(self, ordered_names: List[str]) -> bool:
+        """Updates the sort order of all category groups."""
+        return self.repository.reorder_category_groups(ordered_names)
+
     def delete_category(self, budget: Budget, name: str) -> bool:
         """Removes category from this specific month's budget without affecting other months."""
         categories = self.repository.get_all_categories(include_archived=True)

@@ -145,6 +145,45 @@ class BudgetRepository:
                 return True
             return False
 
+    def move_category_group(self, group_name: str, direction: str) -> bool:
+        """Moves a category group 'up' or 'down' by adjusting sort_order."""
+        with SessionLocal() as session:
+            stmt = select(CategoryGroupModel).order_by(CategoryGroupModel.sort_order, CategoryGroupModel.id)
+            groups = list(session.scalars(stmt).all())
+            
+            names = [g.name.lower() for g in groups]
+            clean_name = group_name.strip().lower()
+            if clean_name not in names:
+                return False
+
+            idx = names.index(clean_name)
+            if direction == "up" and idx > 0:
+                target_idx = idx - 1
+            elif direction == "down" and idx < len(groups) - 1:
+                target_idx = idx + 1
+            else:
+                return False
+
+            # Swap sort_order indices and normalize
+            groups[idx], groups[target_idx] = groups[target_idx], groups[idx]
+            for order, grp in enumerate(groups):
+                grp.sort_order = order
+
+            session.commit()
+            return True
+
+    def reorder_category_groups(self, ordered_names: List[str]) -> bool:
+        """Persists the new display order for category groups."""
+        with SessionLocal() as session:
+            stmt = select(CategoryGroupModel)
+            all_groups = {g.name.lower(): g for g in session.scalars(stmt).all()}
+            for order, name in enumerate(ordered_names):
+                grp = all_groups.get(name.lower())
+                if grp:
+                    grp.sort_order = order
+            session.commit()
+            return True
+
     def set_monthly_allocation(
             self,
             category_id: int,

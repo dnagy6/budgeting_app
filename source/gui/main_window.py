@@ -226,6 +226,32 @@ class BudgetApp:
             service=self.service
         )
 
+    def handle_inline_category_edit(self, old_name: str, new_name: str, new_amount: float):
+        """Updates category name or planned amount directly from inline clicks."""
+        # Find which group this envelope belongs to
+        target_cat = self.current_budget.get_category_by_name(old_name)
+        group_name = None
+        if target_cat:
+            for grp in self.current_budget.groups:
+                if target_cat in grp.categories:
+                    group_name = grp.name
+                    break
+
+        self.service.save_category(
+            budget=self.current_budget,
+            name=new_name,
+            category_type=target_cat.category_type if target_cat else "expense",
+            planned_amount=new_amount,
+            group_name=group_name,
+            old_name=old_name if new_name != old_name else None
+        )
+        self.reload_and_refresh()
+
+    def handle_group_reorder_complete(self, ordered_names: list[str]):
+        """Persists the explicit visual order to SQLite and refreshes."""
+        self.service.reorder_category_groups(ordered_names)
+        self.reload_and_refresh()
+
     def delete_category_envelope(self, cat_name: str):
         if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{cat_name}' from this month?", parent=self.root):
             self.service.delete_category(self.current_budget, cat_name)
@@ -239,6 +265,12 @@ class BudgetApp:
             parent=self.root
         ):
             self.service.delete_category_group(group_name)
+            self.reload_and_refresh()
+
+    def handle_move_category_group(self, group_name: str, direction: str):
+        """Moves a category group up or down in sort order and re-renders."""
+        moved = self.service.move_category_group(group_name, direction)
+        if moved:
             self.reload_and_refresh()
 
     def open_log_transaction_dialog(self):
@@ -357,7 +389,14 @@ class BudgetApp:
         else:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#16a34a")
 
-        # Clear existing group cards
+        # 1. Capture current expansion states before destroying cards
+        card_states = {
+            card.group.name: card.is_expanded
+            for card in self.groups_inner_frame.winfo_children()
+            if isinstance(card, CategoryGroupCard)
+        }
+
+        # 2. Clear existing group cards
         for child in self.groups_inner_frame.winfo_children():
             child.destroy()
 
@@ -373,14 +412,17 @@ class BudgetApp:
             lbl_empty.pack(fill=tk.BOTH, expand=True)
             return
 
-        # Render each CategoryGroupCard
+        # 3. Render cards with their preserved state
         for grp in self.current_budget.groups:
+            was_expanded = card_states.get(grp.name, True)
             card = CategoryGroupCard(
                 self.groups_inner_frame,
                 group=grp,
                 on_add_category=self.open_add_category_to_group,
-                on_edit_category=self.open_edit_category,
+                on_inline_edit=self.handle_inline_category_edit,
                 on_delete_category=self.delete_category_envelope,
-                on_delete_group=self.delete_category_group
+                on_delete_group=self.delete_category_group,
+                on_reorder_complete=self.handle_group_reorder_complete,
+                initial_expanded=was_expanded
             )
             card.pack(fill=tk.X, pady=(0, 12))
