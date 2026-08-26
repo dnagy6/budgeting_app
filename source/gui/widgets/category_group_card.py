@@ -46,17 +46,18 @@ class CategoryGroupCard(tk.Frame):
         controls_left = tk.Frame(self.header_frame, bg="#f8fafc")
         controls_left.pack(side=tk.LEFT)
 
-        # Drag Grip Handle (⋮⋮)
-        self.lbl_grip = tk.Label(
-            controls_left,
-            text="⋮⋮",
-            font=("Helvetica", 14, "bold"),
-            bg="#f8fafc",
-            fg="#94a3b8",
-            cursor="fleur"
-        )
-        self.lbl_grip.pack(side=tk.LEFT, padx=(0, 8))
-        self._bind_drag_events(self.lbl_grip)
+        # Drag Grip Handle (⋮⋮) - ONLY show for expense groups
+        if self.group.group_type != "income":
+            self.lbl_grip = tk.Label(
+                controls_left,
+                text="⋮⋮",
+                font=("Helvetica", 14, "bold"),
+                bg="#f8fafc",
+                fg="#94a3b8",
+                cursor="fleur"
+            )
+            self.lbl_grip.pack(side=tk.LEFT, padx=(0, 8))
+            self._bind_drag_events(self.lbl_grip)
 
         # Expand / Collapse Arrow
         self.lbl_arrow = tk.Label(
@@ -133,8 +134,9 @@ class CategoryGroupCard(tk.Frame):
             grid_table.columnconfigure(3, minsize=120)    # Remaining
             grid_table.columnconfigure(4, minsize=40)     # Delete Action
 
-            # Header Labels
-            actual_header = "RECEIVED" if self.group.group_type == "income" else "SPENT / RECEIVED"
+            # Header Labels (Dynamic based on group type)
+            actual_header = "RECEIVED" if self.group.group_type == "income" else "SPENT"
+            
             tk.Label(grid_table, text="CATEGORY", font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=0, sticky="w", pady=(0, 6))
             tk.Label(grid_table, text="PLANNED", font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=1, sticky="e", padx=(0, 10), pady=(0, 6))
             tk.Label(grid_table, text=actual_header, font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=2, sticky="e", padx=(0, 10), pady=(0, 6))
@@ -181,16 +183,25 @@ class CategoryGroupCard(tk.Frame):
                     bg="#ffffff"
                 ).grid(row=current_row, column=2, sticky="e", padx=(0, 10), pady=4)
 
-                # 4. Remaining Amount (Read-only)
+                # 4. Remaining Amount (Read-only with Type-Specific Color Rules)
                 rem_val = cat.get_remaining_amount()
-                rem_color = "#dc2626" if rem_val < 0 else "#16a34a"
-                tk.Label(
+                actual_val = cat.get_actual_amount()
+
+                if self.group.group_type == "income":
+                    # Income rule: Green when Received >= Planned, Red when Received < Planned
+                    rem_color = "#16a34a" if actual_val >= cat.planned_amount else "#dc2626"
+                else:
+                    # Expense rule: Red if overspent (remaining < 0), Green otherwise
+                    rem_color = "#dc2626" if rem_val < 0 else "#16a34a"
+
+                rem_label = tk.Label(
                     grid_table,
                     text=f"${rem_val:,.2f}",
                     font=("Helvetica", 11, "bold"),
                     fg=rem_color,
                     bg="#ffffff"
-                ).grid(row=current_row, column=3, sticky="e", padx=(0, 10), pady=4)
+                )
+                rem_label.grid(row=current_row, column=3, sticky="e", padx=(0, 10), pady=4)
 
                 # 5. Delete Action (✕)
                 btn_del = tk.Button(
@@ -212,36 +223,31 @@ class CategoryGroupCard(tk.Frame):
         footer = tk.Frame(self.body_frame, bg="#ffffff")
         footer.pack(fill=tk.X, pady=(12, 4))
 
-        btn_label = "+ Add Income" if self.group.group_type == "income" else "+ Add Expense"
-        btn_add = tk.Button(
+        btn_add = ttk.Button(
             footer,
-            text=btn_label,
-            font=("Helvetica", 10, "bold"),
-            fg="#0284c7",
-            bg="#ffffff",
-            activeforeground="#0369a1",
-            activebackground="#ffffff",
-            relief=tk.FLAT,
-            bd=0,
+            text="+ Add Income" if self.group.group_type == "income" else "+ Add Expense",
             cursor="hand2",
             command=lambda: self.on_add_category(self.group.name, self.group.group_type)
         )
         btn_add.pack(side=tk.LEFT)
 
-        btn_del_grp = tk.Button(
-            footer,
-            text="Delete Group",
-            font=("Helvetica", 9),
-            fg="#94a3b8",
-            bg="#ffffff",
-            activeforeground="#ef4444",
-            activebackground="#ffffff",
-            relief=tk.FLAT,
-            bd=0,
-            cursor="hand2",
-            command=lambda: self.on_delete_group(self.group.name)
-        )
-        btn_del_grp.pack(side=tk.RIGHT)
+        # Only allow deleting groups if it's NOT an income group
+        if self.group.group_type != "income":
+            # Using tk.Button so -font works seamlessly without TclErrors
+            btn_del_grp = tk.Button(
+                footer,
+                text="Delete Group",
+                font=("Helvetica", 9),
+                fg="#94a3b8",
+                bg="#ffffff",
+                activeforeground="#ef4444",
+                activebackground="#ffffff",
+                relief=tk.FLAT,
+                bd=0,
+                cursor="hand2",
+                command=lambda: self.on_delete_group(self.group.name)
+            )
+            btn_del_grp.pack(side=tk.RIGHT)
 
     # --- INLINE EDITING LOGIC ---
 

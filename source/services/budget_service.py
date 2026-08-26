@@ -20,14 +20,31 @@ class BudgetService:
         """Loads groups, categories, monthly allocations, and tracked transactions into Budget."""
         budget = Budget(month=month, year=year)
 
-        # 1. Fetch all groups and categories from database
         db_groups = self.repository.get_all_category_groups()
         group_lookup = {g.id: g for g in db_groups}
+
+        # 1. Ensure a global "Income" group exists and is strictly typed as "income"
+        income_db_grp = next((g for g in db_groups if g.group_type == "income" or g.name.lower() == "income"), None)
+        if not income_db_grp:
+            income_db_grp = self.repository.add_category_group(
+                name="Income",
+                group_type="income",
+                sort_order=-999
+            )
+            db_groups = self.repository.get_all_category_groups()
+            group_lookup = {g.id: g for g in db_groups}
+        elif income_db_grp.group_type != "income":
+            # Force correct type if it was previously created as an expense
+            income_db_grp.group_type = "income"
+
+        # 2. Force the Income group to be active for this specific month
+        if not self.repository.has_monthly_state(income_db_grp.id, year, month):
+            self.repository.set_group_active_state(income_db_grp.id, year, month, is_active=True)
 
         all_categories = self.repository.get_all_categories(include_archived=True)
         cat_lookup = {c.id: c for c in all_categories}
 
-        # 2. Fetch allocations and tracked transactions for THIS specific month
+        # 3. Fetch allocations and tracked transactions for this month
         monthly_allocations = self.repository.get_allocations_for_month(year, month)
         alloc_map = {alloc.category_id: float(alloc.planned_amount) for alloc in monthly_allocations}
 
@@ -44,16 +61,20 @@ class BudgetService:
             if cat_id in cat_lookup and cat_lookup[cat_id].group_id in group_lookup
         }
 
-        # 3. Instantiate groups that are active or explicitly enabled for this month
+        # 4. Instantiate groups: ensure existing groups are active for this month by default
         for db_grp in db_groups:
             is_active = self.repository.is_group_active_for_month(db_grp.id, year, month)
+            if not self.repository.has_monthly_state(db_grp.id, year, month):
+                self.repository.set_group_active_state(db_grp.id, year, month, is_active=True)
+                is_active = True
+
             has_active_cats = db_grp.id in active_group_ids
+            is_income = db_grp.group_type == "income" or db_grp.name.lower() == "income"
 
-            # Show group if it has active items OR if its monthly state is explicitly True (or default new)
-            if has_active_cats or is_active:
-                budget.get_or_create_group(name=db_grp.name, group_type=db_grp.group_type)
+            if has_active_cats or is_active or is_income:
+                budget.get_or_create_group(name=db_grp.name, group_type="income" if is_income else db_grp.group_type)
 
-        # 4. Attach active categories and their parent groups to this month's budget
+        # 5. Attach active categories and their parent groups
         for cat_id in active_cat_ids:
             db_cat = cat_lookup.get(cat_id)
             if db_cat:
@@ -67,11 +88,15 @@ class BudgetService:
                         group_name=grp_name
                     )
 
-        # 5. Maintain user custom sort order for groups
+        # 6. Sort groups: Income ALWAYS at index 0, followed by user custom order
+        user_groups = [g for g in budget.groups if g.group_type != "income" and g.name.lower() != "income"]
         group_order_map = {g.name.lower(): idx for idx, g in enumerate(db_groups)}
-        budget.groups.sort(key=lambda g: group_order_map.get(g.name.lower(), 999))
+        user_groups.sort(key=lambda g: group_order_map.get(g.name.lower(), 999))
+        
+        income_groups = [g for g in budget.groups if g.group_type == "income" or g.name.lower() == "income"]
+        budget.groups = income_groups + user_groups
 
-        # 6. Attach transactions to envelopes
+        # 7. Attach transactions to envelopes
         for db_tx in month_transactions:
             db_cat = cat_lookup.get(db_tx.category_id)
             if db_cat:

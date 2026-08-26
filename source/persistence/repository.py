@@ -19,28 +19,44 @@ class BudgetRepository:
         year: Optional[int] = None,
         month: Optional[int] = None
     ) -> CategoryGroupModel:
-        """Creates a new category group or returns existing one, and optionally sets active state for a month."""
+        """Adds or retrieves a category group and safely handles optional monthly activation."""
         with SessionLocal() as session:
-            stmt = select(CategoryGroupModel).where(CategoryGroupModel.name == name)
-            group = session.scalars(stmt).first()
-            if not group:
-                group = CategoryGroupModel(name=name, group_type=group_type, sort_order=sort_order)
+            clean_name = name.strip()
+            group = session.scalars(
+                select(CategoryGroupModel).where(CategoryGroupModel.name == clean_name)
+            ).first()
+
+            if group:
+                group.group_type = group_type
+                session.commit()
+            else:
+                group = CategoryGroupModel(
+                    name=clean_name,
+                    group_type=group_type,
+                    sort_order=sort_order
+                )
                 session.add(group)
                 session.commit()
                 session.refresh(group)
 
-            # If a year and month are provided, ensure its monthly state is active
+            # If year and month are provided, ensure it's active for this month
             if year and month:
-                state_stmt = select(MonthlyGroupStateModel).where(
-                    MonthlyGroupStateModel.group_id == group.id,
-                    MonthlyGroupStateModel.year == year,
-                    MonthlyGroupStateModel.month == month
-                )
-                state = session.scalars(state_stmt).first()
+                state = session.scalars(
+                    select(MonthlyGroupStateModel).where(
+                        MonthlyGroupStateModel.group_id == group.id,
+                        MonthlyGroupStateModel.year == year,
+                        MonthlyGroupStateModel.month == month
+                    )
+                ).first()
                 if state:
                     state.is_active = True
                 else:
-                    session.add(MonthlyGroupStateModel(group_id=group.id, year=year, month=month, is_active=True))
+                    session.add(MonthlyGroupStateModel(
+                        group_id=group.id,
+                        year=year,
+                        month=month,
+                        is_active=True
+                    ))
                 session.commit()
 
             return group
@@ -267,6 +283,27 @@ class BudgetRepository:
             session.commit()
             return True
 
+    def set_group_month_active(self, group_id: int, year: int, month: int, is_active: bool):
+        """Sets a category group's active state for a specific month."""
+        with SessionLocal() as session:
+            state = session.scalars(
+                select(MonthlyGroupStateModel).where(
+                    MonthlyGroupStateModel.group_id == group_id,
+                    MonthlyGroupStateModel.year == year,
+                    MonthlyGroupStateModel.month == month
+                )
+            ).first()
+            if state:
+                state.is_active = is_active
+            else:
+                session.add(MonthlyGroupStateModel(
+                    group_id=group_id,
+                    year=year,
+                    month=month,
+                    is_active=is_active
+                ))
+            session.commit()
+
     def set_monthly_allocation(
             self,
             category_id: int,
@@ -473,23 +510,35 @@ class BudgetRepository:
                 return state.is_active
             return False
 
-    def set_group_month_active(self, group_id: int, year: int, month: int, is_active: bool):
-        """Sets or updates the visibility/activation state of a group for a specific month."""
+    def set_group_active_state(self, group_id: int, year: int, month: int, is_active: bool):
+        """Ensures a category group's active state is explicitly set for a given month."""
         with SessionLocal() as session:
-            stmt = select(MonthlyGroupStateModel).where(
-                MonthlyGroupStateModel.group_id == group_id,
-                MonthlyGroupStateModel.year == year,
-                MonthlyGroupStateModel.month == month
-            )
-            state = session.scalars(stmt).first()
+            state = session.scalars(
+                select(MonthlyGroupStateModel).where(
+                    MonthlyGroupStateModel.group_id == group_id,
+                    MonthlyGroupStateModel.year == year,
+                    MonthlyGroupStateModel.month == month
+                )
+            ).first()
             if state:
                 state.is_active = is_active
             else:
-                state = MonthlyGroupStateModel(
+                session.add(MonthlyGroupStateModel(
                     group_id=group_id,
                     year=year,
                     month=month,
                     is_active=is_active
-                )
-                session.add(state)
+                ))
             session.commit()
+
+    def has_monthly_state(self, group_id: int, year: int, month: int) -> bool:
+        """Checks if a monthly state record exists for a group in a given month."""
+        with SessionLocal() as session:
+            state = session.scalars(
+                select(MonthlyGroupStateModel).where(
+                    MonthlyGroupStateModel.group_id == group_id,
+                    MonthlyGroupStateModel.year == year,
+                    MonthlyGroupStateModel.month == month
+                )
+            ).first()
+            return state is not None

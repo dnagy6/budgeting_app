@@ -105,24 +105,18 @@ class BudgetApp:
         self.btn_reset_budget.pack(side=tk.RIGHT, padx=6)
 
     def create_summary_ui(self):
+        """Creates the top summary card displaying Income Received and Left to Budget."""
         summary_card = tk.Frame(self.center_frame, bg="#ffffff", highlightthickness=1, highlightbackground="#e2e8f0", padx=16, pady=14)
         summary_card.pack(fill=tk.X, padx=20, pady=(0, 10))
 
-        # Income Total
+        # Column 1: Income Received
         col1 = tk.Frame(summary_card, bg="#ffffff")
         col1.pack(side=tk.LEFT, expand=True)
-        tk.Label(col1, text="TOTAL INCOME", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
+        tk.Label(col1, text="INCOME RECEIVED", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
         self.income_val_label = tk.Label(col1, text="$0.00", font=("Helvetica", 14, "bold"), fg="#0f172a", bg="#ffffff")
         self.income_val_label.pack(anchor="w")
 
-        # Allocated Total
-        col2 = tk.Frame(summary_card, bg="#ffffff")
-        col2.pack(side=tk.LEFT, expand=True)
-        tk.Label(col2, text="TOTAL ALLOCATED", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
-        self.allocated_val_label = tk.Label(col2, text="$0.00", font=("Helvetica", 14, "bold"), fg="#0f172a", bg="#ffffff")
-        self.allocated_val_label.pack(anchor="w")
-
-        # Left to Budget
+        # Column 2: Left to Budget
         col3 = tk.Frame(summary_card, bg="#ffffff")
         col3.pack(side=tk.LEFT, expand=True)
         tk.Label(col3, text="LEFT TO BUDGET", font=("Helvetica", 9, "bold"), fg="#64748b", bg="#ffffff").pack(anchor="w")
@@ -130,13 +124,19 @@ class BudgetApp:
         self.unallocated_val_label.pack(anchor="w")
 
     def create_scrollable_groups_canvas(self):
-        """Creates a scrollable canvas container for CategoryGroupCards."""
-        container = tk.Frame(self.center_frame, bg="#f8fafc")
-        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+        """Creates a dedicated fixed top frame for Income and a scrollable canvas for Expenses."""
+        
+        # 1. Dedicated Fixed Income Container (Always at the top, never scrolls away)
+        self.income_container = tk.Frame(self.center_frame, bg="#ffffff")
+        self.income_container.pack(fill=tk.X, padx=20, pady=(0, 10))
 
-        self.canvas = tk.Canvas(container, bg="#f8fafc", bd=0, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.groups_inner_frame = tk.Frame(self.canvas, bg="#f8fafc")
+        # 2. Scrollable Container for Expense Groups Only
+        expense_container = tk.Frame(self.center_frame, bg="#ffffff")
+        expense_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
+
+        self.canvas = tk.Canvas(expense_container, bg="#ffffff", highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(expense_container, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.groups_inner_frame = tk.Frame(self.canvas, bg="#ffffff")
 
         self.groups_inner_frame.bind(
             "<Configure>",
@@ -197,10 +197,10 @@ class BudgetApp:
             default_name = f"New Group {counter}"
             counter += 1
 
-        # Save it immediately via service so it persists and gets an active state for this month
+        # Save it immediately with a unique placeholder name tied to this specific group
         self.service.save_category(
             budget=self.current_budget,
-            name="Initial Placeholder",  # Temporary category to satisfy group instantiation requirements
+            name=f"{default_name} Envelope",  # <--- Unique name prevents collision/theft
             category_type="expense",
             planned_amount=0.0,
             group_name=default_name
@@ -389,57 +389,88 @@ class BudgetApp:
         month_name = calendar.month_name[self.current_month]
         self.btn_month_selector.config(text=f"{month_name} {self.current_year} ▾")
 
-        total_income = self.current_budget.get_total_income()
-        total_allocated = self.current_budget.get_total_allocated()
-        unallocated = self.current_budget.get_remaining_to_budget()
+        # 1. Calculate Income Received and Left to Budget (keeping your math intact)
+        total_income_received = sum(
+            cat.get_actual_amount()
+            for grp in self.current_budget.groups
+            if grp.group_type == "income"
+            for cat in grp.categories
+        )
 
-        self.income_val_label.config(text=f"${total_income:,.2f}")
-        self.allocated_val_label.config(text=f"${total_allocated:,.2f}")
+        total_allocated_expenses = sum(
+            cat.planned_amount
+            for grp in self.current_budget.groups
+            if grp.group_type != "income"
+            for cat in grp.categories
+        )
 
+        unallocated = total_income_received - total_allocated_expenses
+
+        self.income_val_label.config(text=f"${total_income_received:,.2f}")
         if unallocated < 0:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#dc2626")
         else:
             self.unallocated_val_label.config(text=f"${unallocated:,.2f}", fg="#16a34a")
 
-        # Synchronize Transaction Panel period and items
         if hasattr(self, "transaction_panel"):
             self.transaction_panel.set_period(self.current_year, self.current_month)
 
-        # 1. Capture current expansion states before destroying cards
+        # Capture expansion states
         card_states = {
             card.group.name: card.is_expanded
             for card in self.groups_inner_frame.winfo_children()
             if isinstance(card, CategoryGroupCard)
         }
 
-        # 2. Clear existing group cards
+        # Clear existing cards from both containers
+        for child in self.income_container.winfo_children():
+            child.destroy()
         for child in self.groups_inner_frame.winfo_children():
             child.destroy()
 
-        if not self.current_budget.groups:
-            lbl_empty = tk.Label(
-                self.groups_inner_frame,
-                text="No category groups created yet.\nClick '+ Add Category Group' below to start organizing your budget.",
-                font=("Helvetica", 11),
-                fg="#94a3b8",
-                bg="#f8fafc",
-                pady=40
-            )
-            lbl_empty.pack(fill=tk.BOTH, expand=True)
-            return
+        # Separate Income groups from Expense groups
+        income_groups = [g for g in self.current_budget.groups if g.group_type == "income" or g.name.lower() == "income"]
+        expense_groups = [g for g in self.current_budget.groups if g.group_type != "income" and g.name.lower() != "income"]
 
-        # 3. Render cards with their preserved state
-        for grp in self.current_budget.groups:
+        # Render Income Card in its own dedicated top frame
+        for grp in income_groups:
             was_expanded = card_states.get(grp.name, True)
             card = CategoryGroupCard(
-                self.groups_inner_frame,
+                self.income_container,
                 group=grp,
                 on_add_category=self.open_add_category_to_group,
                 on_inline_edit=self.handle_inline_category_edit,
                 on_delete_category=self.delete_category_envelope,
                 on_delete_group=self.delete_category_group,
                 on_reorder_complete=self.handle_group_reorder_complete,
-                on_rename_group=self.handle_inline_group_rename,  # <--- Wire this up
+                on_rename_group=self.handle_inline_group_rename,
                 initial_expanded=was_expanded
             )
-            card.pack(fill=tk.X, pady=(0, 12))
+            card.pack(fill=tk.X, expand=True)
+
+        # Render Expense Cards in the scrollable canvas below
+        if not expense_groups:
+            lbl_empty = tk.Label(
+                self.groups_inner_frame,
+                text="No expense category groups created yet.\nClick '+ Add Category Group' below to start organizing your budget.",
+                font=("Helvetica", 11),
+                fg="#94a3b8",
+                bg="#ffffff",
+                pady=20
+            )
+            lbl_empty.pack(fill=tk.BOTH, expand=True)
+        else:
+            for grp in expense_groups:
+                was_expanded = card_states.get(grp.name, True)
+                card = CategoryGroupCard(
+                    self.groups_inner_frame,
+                    group=grp,
+                    on_add_category=self.open_add_category_to_group,
+                    on_inline_edit=self.handle_inline_category_edit,
+                    on_delete_category=self.delete_category_envelope,
+                    on_delete_group=self.delete_category_group,
+                    on_reorder_complete=self.handle_group_reorder_complete,
+                    on_rename_group=self.handle_inline_group_rename,
+                    initial_expanded=was_expanded
+                )
+                card.pack(fill=tk.X, padx=4, pady=6)
