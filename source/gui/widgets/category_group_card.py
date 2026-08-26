@@ -20,9 +20,12 @@ class CategoryGroupCard(tk.Frame):
         on_delete_category: Callable[[str], None],
         on_delete_group: Callable[[str], None],
         on_reorder_complete: Callable[[], None],
+        on_rename_group: Optional[Callable[[str, str], None]] = None,
         initial_expanded: bool = True,
         **kwargs
     ):
+        self.on_rename_group = on_rename_group
+
         super().__init__(parent, bg="#ffffff", highlightthickness=1, highlightbackground="#e2e8f0", bd=0, **kwargs)
         self.group = group
         self.container_parent = parent
@@ -67,17 +70,17 @@ class CategoryGroupCard(tk.Frame):
         self.lbl_arrow.pack(side=tk.LEFT, padx=(0, 6))
         self.lbl_arrow.bind("<Button-1>", lambda e: self.toggle_expand())
 
-        # Group Name Title
+        # # Group Name Title
         self.lbl_title = tk.Label(
             controls_left,
             text=self.group.name,
             font=("Helvetica", 12, "bold"),
             bg="#f8fafc",
             fg="#0f172a",
-            cursor="hand2"
+            cursor="xterm"  # Indicates text editability
         )
         self.lbl_title.pack(side=tk.LEFT)
-        self.lbl_title.bind("<Button-1>", lambda e: self.toggle_expand())
+        self.lbl_title.bind("<Button-1>", lambda e: self._start_inline_group_name_edit())
 
         # Header Summary Totals
         total_planned = self.group.get_total_planned()
@@ -241,6 +244,42 @@ class CategoryGroupCard(tk.Frame):
         btn_del_grp.pack(side=tk.RIGHT)
 
     # --- INLINE EDITING LOGIC ---
+
+    def _start_inline_group_name_edit(self):
+        """Replaces category group title label with an inline Entry field."""
+        old_name = self.group.name
+        
+        # Hide label
+        self.lbl_title.pack_forget()
+
+        # Create inline entry inside the header frame
+        entry = ttk.Entry(self.lbl_title.master, font=("Helvetica", 12, "bold"))
+        entry.insert(0, old_name)
+        entry.select_range(0, tk.END)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        entry.focus_set()
+
+        def save_group_name(event=None):
+            new_name = entry.get().strip()
+            entry.destroy()
+            self.lbl_title.pack(side=tk.LEFT)
+            
+            if new_name and new_name != old_name:
+                # Notify parent/main window to update repository and domain model
+                if hasattr(self, "on_rename_group") and self.on_rename_group:
+                    self.on_rename_group(old_name, new_name)
+                else:
+                    # Fallback or direct callback if mapped
+                    self.group.name = new_name
+                    self.lbl_title.config(text=new_name)
+
+        def cancel(event=None):
+            entry.destroy()
+            self.lbl_title.pack(side=tk.LEFT)
+
+        entry.bind("<Return>", save_group_name)
+        entry.bind("<FocusOut>", save_group_name)
+        entry.bind("<Escape>", cancel)
 
     def _start_inline_name_edit(self, cat: Category, label: tk.Label, parent_grid: tk.Frame):
         """Replaces category name label with an inline Entry field."""

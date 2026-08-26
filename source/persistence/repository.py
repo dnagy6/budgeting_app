@@ -3,7 +3,7 @@ from datetime import date
 from typing import List, Optional
 from sqlalchemy import select
 from source.persistence.database import SessionLocal
-from source.persistence.models import CategoryGroupModel, CategoryModel, TransactionModel, MonthlyAllocationModel
+from source.persistence.models import CategoryGroupModel, CategoryModel, TransactionModel, MonthlyAllocationModel, MonthlyGroupStateModel
 
 
 class BudgetRepository:
@@ -11,8 +11,15 @@ class BudgetRepository:
 
     # CATEGORY GROUP OPERATIONS
 
-    def add_category_group(self, name: str, group_type: str = "expense", sort_order: int = 0) -> CategoryGroupModel:
-        """Creates a new category group or returns existing one."""
+    def add_category_group(
+        self,
+        name: str,
+        group_type: str = "expense",
+        sort_order: int = 0,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> CategoryGroupModel:
+        """Creates a new category group or returns existing one, and optionally sets active state for a month."""
         with SessionLocal() as session:
             stmt = select(CategoryGroupModel).where(CategoryGroupModel.name == name)
             group = session.scalars(stmt).first()
@@ -21,6 +28,21 @@ class BudgetRepository:
                 session.add(group)
                 session.commit()
                 session.refresh(group)
+
+            # If a year and month are provided, ensure its monthly state is active
+            if year and month:
+                state_stmt = select(MonthlyGroupStateModel).where(
+                    MonthlyGroupStateModel.group_id == group.id,
+                    MonthlyGroupStateModel.year == year,
+                    MonthlyGroupStateModel.month == month
+                )
+                state = session.scalars(state_stmt).first()
+                if state:
+                    state.is_active = True
+                else:
+                    session.add(MonthlyGroupStateModel(group_id=group.id, year=year, month=month, is_active=True))
+                session.commit()
+
             return group
 
     def get_all_category_groups(self) -> List[CategoryGroupModel]:
@@ -114,6 +136,67 @@ class BudgetRepository:
                 return True
             return False
 
+    def update_category_group_name(
+        self,
+        old_name: str,
+        new_name: str,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> bool:
+        """
+        Smart-updates a group's name. If new_name already exists globally (reactivating a 
+        previously hidden group), it reactivates the existing record for this month and 
+        safely cleans up the old placeholder group.
+        """
+        clean_new = new_name.strip()
+        clean_old = old_name.strip()
+        if not clean_new or clean_new == clean_old:
+            return True
+
+        with SessionLocal() as session:
+            # 1. Check if the target name already exists globally
+            existing_target = session.scalars(
+                select(CategoryGroupModel).where(CategoryGroupModel.name == clean_new)
+            ).first()
+
+            old_group = session.scalars(
+                select(CategoryGroupModel).where(CategoryGroupModel.name == clean_old)
+            ).first()
+
+            # 2. If the name already exists elsewhere, handle it gracefully (Reactivation & Merge)
+            if existing_target and old_group and existing_target.id != old_group.id:
+                if year and month:
+                    # Ensure the existing target group is active for this month
+                    state = session.scalars(
+                        select(MonthlyGroupStateModel).where(
+                            MonthlyGroupStateModel.group_id == existing_target.id,
+                            MonthlyGroupStateModel.year == year,
+                            MonthlyGroupStateModel.month == month
+                        )
+                    ).first()
+                    if state:
+                        state.is_active = True
+                    else:
+                        session.add(MonthlyGroupStateModel(
+                            group_id=existing_target.id,
+                            year=year,
+                            month=month,
+                            is_active=True
+                        ))
+                
+                # Delete the temporary placeholder group since we are reverting to the canonical one
+                session.delete(old_group)
+                session.commit()
+                return True
+
+            # 3. Standard clean rename
+            elif old_group:
+                old_group.name = clean_new
+                session.commit()
+                return True
+
+            return False
+        
     def update_category_name(
         self,
         old_name: str,
@@ -376,3 +459,37 @@ class BudgetRepository:
                 MonthlyAllocationModel.year == year
             ).distinct()
             return list(session.scalars(stmt).all())
+
+    def is_group_active_for_month(self, group_id: int, year: int, month: int) -> bool:
+        """Checks if a group has an explicit state or active allocations for a given month."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyGroupStateModel).where(
+                MonthlyGroupStateModel.group_id == group_id,
+                MonthlyGroupStateModel.year == year,
+                MonthlyGroupStateModel.month == month
+            )
+            state = session.scalars(stmt).first()
+            if state is not None:
+                return state.is_active
+            return False
+
+    def set_group_month_active(self, group_id: int, year: int, month: int, is_active: bool):
+        """Sets or updates the visibility/activation state of a group for a specific month."""
+        with SessionLocal() as session:
+            stmt = select(MonthlyGroupStateModel).where(
+                MonthlyGroupStateModel.group_id == group_id,
+                MonthlyGroupStateModel.year == year,
+                MonthlyGroupStateModel.month == month
+            )
+            state = session.scalars(stmt).first()
+            if state:
+                state.is_active = is_active
+            else:
+                state = MonthlyGroupStateModel(
+                    group_id=group_id,
+                    year=year,
+                    month=month,
+                    is_active=is_active
+                )
+                session.add(state)
+            session.commit()

@@ -59,3 +59,16 @@ class MonthlyAllocationModel(Base):
     __table_args__ = (
         UniqueConstraint("category_id", "year", "month", name="uq_category_month_year"),
     )
+
+class MonthlyGroupStateModel(Base):
+    __tablename__ = "monthly_group_states"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("category_groups.id"), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "year", "month", name="uq_group_month_state"),
+    )

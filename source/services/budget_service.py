@@ -7,6 +7,8 @@ from source.domain.category import Category
 from source.domain.transaction import Transaction
 from source.persistence.repository import BudgetRepository
 
+from source.persistence.models import MonthlyGroupStateModel
+
 
 class BudgetService:
     """Coordinates domain model logic and database persistence."""
@@ -25,18 +27,7 @@ class BudgetService:
         all_categories = self.repository.get_all_categories(include_archived=True)
         cat_lookup = {c.id: c for c in all_categories}
 
-        # Count global child categories per group
-        group_cats_count = {g.id: 0 for g in db_groups}
-        for c in all_categories:
-            if c.group_id in group_cats_count:
-                group_cats_count[c.group_id] += 1
-
-        # 2. Only pre-instantiate freshly created groups that have 0 categories globally
-        for db_grp in db_groups:
-            if group_cats_count[db_grp.id] == 0:
-                budget.get_or_create_group(name=db_grp.name, group_type=db_grp.group_type)
-
-        # 3. Fetch allocations and tracked transactions for THIS specific month
+        # 2. Fetch allocations and tracked transactions for THIS specific month
         monthly_allocations = self.repository.get_allocations_for_month(year, month)
         alloc_map = {alloc.category_id: float(alloc.planned_amount) for alloc in monthly_allocations}
 
@@ -46,20 +37,35 @@ class BudgetService:
             if tx.trans_date and tx.trans_date.year == year and tx.trans_date.month == month
         ]
 
-        # 4. Attach active categories and their parent groups to this month's budget
         active_cat_ids = set(alloc_map.keys()) | {tx.category_id for tx in month_transactions if tx.category_id}
+        active_group_ids = {
+            cat_lookup[cat_id].group_id
+            for cat_id in active_cat_ids
+            if cat_id in cat_lookup and cat_lookup[cat_id].group_id in group_lookup
+        }
 
+        # 3. Instantiate groups that are active or explicitly enabled for this month
+        for db_grp in db_groups:
+            is_active = self.repository.is_group_active_for_month(db_grp.id, year, month)
+            has_active_cats = db_grp.id in active_group_ids
+
+            # Show group if it has active items OR if its monthly state is explicitly True (or default new)
+            if has_active_cats or is_active:
+                budget.get_or_create_group(name=db_grp.name, group_type=db_grp.group_type)
+
+        # 4. Attach active categories and their parent groups to this month's budget
         for cat_id in active_cat_ids:
             db_cat = cat_lookup.get(cat_id)
             if db_cat:
                 planned = alloc_map.get(cat_id, 0.0)
                 grp_name = group_lookup[db_cat.group_id].name if db_cat.group_id in group_lookup else None
-                budget.add_or_update_category(
-                    name=db_cat.name,
-                    category_type=db_cat.category_type,
-                    planned_amount=planned,
-                    group_name=grp_name
-                )
+                if grp_name:
+                    budget.add_or_update_category(
+                        name=db_cat.name,
+                        category_type=db_cat.category_type,
+                        planned_amount=planned,
+                        group_name=grp_name
+                    )
 
         # 5. Maintain user custom sort order for groups
         group_order_map = {g.name.lower(): idx for idx, g in enumerate(db_groups)}
@@ -94,7 +100,13 @@ class BudgetService:
         """Saves category definition, sets its parent group, and stores the monthly allocation."""
         group_id = None
         if group_name:
-            grp = self.repository.add_category_group(name=group_name, group_type=category_type)
+            # Pass budget year and month so the group state stays active for this month
+            grp = self.repository.add_category_group(
+                name=group_name,
+                group_type=category_type,
+                year=budget.year,
+                month=budget.month
+            )
             group_id = grp.id
 
         # 1. Update or create category in DB
@@ -158,8 +170,8 @@ class BudgetService:
 
     def delete_category_group(self, budget: Budget, group_name: str) -> bool:
         """
-        Deletes a category group for this specific month by deleting monthly allocations
-        for all child categories. Cleans up globally only if the group has 0 categories in DB.
+        Deletes a category group strictly for the current month by clearing child 
+        allocations and marking the group inactive for this month only.
         """
         clean_name = group_name.strip().lower()
         target_group = next((g for g in budget.groups if g.name.lower() == clean_name), None)
@@ -168,7 +180,7 @@ class BudgetService:
             all_cats = self.repository.get_all_categories(include_archived=True)
             name_to_id = {c.name.lower(): c.id for c in all_cats}
 
-            # Delete month allocations only for this month
+            # 1. Clear monthly allocations for this month only
             for cat in target_group.categories:
                 cat_id = name_to_id.get(cat.name.lower())
                 if cat_id:
@@ -178,20 +190,17 @@ class BudgetService:
                         month=budget.month
                     )
 
-            # Remove from active domain budget
+            # 2. Mark group inactive for this specific month
+            db_groups = self.repository.get_all_category_groups()
+            db_grp = next((g for g in db_groups if g.name.lower() == clean_name), None)
+            if db_grp:
+                self.repository.set_group_month_active(db_grp.id, budget.year, budget.month, is_active=False)
+
+            # 3. Remove from active domain model view
             budget.groups.remove(target_group)
             for cat in list(target_group.categories):
                 if cat in budget.categories:
                     budget.categories.remove(cat)
-
-        # If the group has no child categories anywhere in the DB, clean it up
-        db_groups = self.repository.get_all_category_groups()
-        db_grp = next((g for g in db_groups if g.name.lower() == clean_name), None)
-        if db_grp:
-            all_db_cats = self.repository.get_all_categories(include_archived=True)
-            has_cats = any(c.group_id == db_grp.id for c in all_db_cats)
-            if not has_cats:
-                self.repository.delete_category_group(db_grp.id)
 
         return True
     

@@ -188,11 +188,26 @@ class BudgetApp:
         self.transaction_panel.pack(fill=tk.BOTH, expand=True)
 
     def open_add_group_dialog(self):
-        AddCategoryGroupDialog(
-            self.root,
-            on_success_callback=self.reload_and_refresh,
-            service=self.service
+        """Creates a blank inline category group directly in the active budget view."""
+        # Check if an 'Untitled Group' already exists to avoid duplicate placeholders
+        default_name = "New Group"
+        counter = 1
+        existing_names = {g.name for g in self.current_budget.groups}
+        while default_name in existing_names:
+            default_name = f"New Group {counter}"
+            counter += 1
+
+        # Save it immediately via service so it persists and gets an active state for this month
+        self.service.save_category(
+            budget=self.current_budget,
+            name="Initial Placeholder",  # Temporary category to satisfy group instantiation requirements
+            category_type="expense",
+            planned_amount=0.0,
+            group_name=default_name
         )
+        
+        # Reload and refresh so the new inline card appears on canvas ready for editing
+        self.reload_and_refresh()
 
     def open_add_category_to_group(self, group_name: str, group_type: str):
         AddCategoryDialog(
@@ -212,6 +227,16 @@ class BudgetApp:
             existing_category=category,
             service=self.service
         )
+
+    def handle_inline_group_rename(self, old_name: str, new_name: str):
+        """Renames or reactivates a category group in the repository and reloads."""
+        self.service.repository.update_category_group_name(
+            old_name,
+            new_name,
+            year=self.current_year,
+            month=self.current_month
+        )
+        self.reload_and_refresh()
 
     def handle_inline_category_edit(self, old_name: str, new_name: str, new_amount: float):
         """Updates category name or planned amount directly from inline clicks."""
@@ -414,6 +439,7 @@ class BudgetApp:
                 on_delete_category=self.delete_category_envelope,
                 on_delete_group=self.delete_category_group,
                 on_reorder_complete=self.handle_group_reorder_complete,
+                on_rename_group=self.handle_inline_group_rename,  # <--- Wire this up
                 initial_expanded=was_expanded
             )
             card.pack(fill=tk.X, pady=(0, 12))
