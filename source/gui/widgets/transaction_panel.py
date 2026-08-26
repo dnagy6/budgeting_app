@@ -1,13 +1,17 @@
 """
 File: source/gui/widgets/transaction_panel.py
-Purpose: Right-rail transaction stream with subtabs, status queues, and inline actions.
+Purpose: Right-rail transaction stream with bank sync trigger, status queues, 
+         read-only pending status, and active mousewheel scrolling.
 """
 
 import calendar
+import platform
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Callable
+from typing import Callable, Dict, List, Optional
 from source.services.budget_service import BudgetService
+from source.services.transaction_stream_service import TransactionStreamService
+from source.services.mock_stream_generator import MockStreamGenerator
 
 
 class TransactionPanel(tk.Frame):
@@ -20,8 +24,9 @@ class TransactionPanel(tk.Frame):
     ):
         super().__init__(parent, bg="#ffffff", **kwargs)
         self.service = service
+        self.stream_service = TransactionStreamService(self.service.repository)
         self.on_data_changed = on_data_changed
-        self.current_tab = "tracked"  # "new", "tracked", "deleted", "pending"
+        self.current_tab = "new"
         self.current_year = 2026
         self.current_month = 8
 
@@ -58,11 +63,9 @@ class TransactionPanel(tk.Frame):
         self.lbl_month_tag.pack(side=tk.RIGHT)
 
     def _create_tabs_ui(self):
-        # Container with subtle background pill wrapper
         self.tabs_bar = tk.Frame(self, bg="#f1f5f9", padx=3, pady=3)
         self.tabs_bar.pack(fill=tk.X, padx=12, pady=(0, 8))
 
-        # 4 equal-width grid columns
         for col in range(4):
             self.tabs_bar.columnconfigure(col, weight=1, uniform="tab_group")
 
@@ -93,40 +96,91 @@ class TransactionPanel(tk.Frame):
             self.tab_buttons[tab_id] = btn
 
     def _create_scrollable_stream(self):
-        container = tk.Frame(self, bg="#ffffff")
-        container.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
+        self.container = tk.Frame(self, bg="#ffffff")
+        self.container.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
 
-        self.canvas = tk.Canvas(container, bg="#ffffff", bd=0, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.canvas = tk.Canvas(self.container, bg="#ffffff", bd=0, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.container, orient=tk.VERTICAL, command=self.canvas.yview)
         self.stream_inner_frame = tk.Frame(self.canvas, bg="#ffffff")
 
-        self.stream_inner_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        self.stream_inner_frame.bind("<Configure>", self._update_scroll_region)
         self.canvas_window = self.canvas.create_window((0, 0), window=self.stream_inner_frame, anchor="nw")
 
         self.canvas.bind(
             "<Configure>",
-            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
+            lambda e: (
+                self.canvas.itemconfig(self.canvas_window, width=e.width),
+                self._update_scroll_region()
+            )
         )
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Mousewheel & Trackpad Scroll Bindings
+        self.container.bind("<Enter>", self._bind_mousewheel)
+        self.container.bind("<Leave>", self._unbind_mousewheel)
+
+    def _update_scroll_region(self, event=None):
+        """Ensures the scroll region anchors cleanly to the top."""
+        self.canvas.update_idletasks()
+        content_height = self.stream_inner_frame.winfo_reqheight()
+        canvas_height = self.canvas.winfo_height()
+
+        if content_height <= canvas_height:
+            self.canvas.yview_moveto(0.0)
+            self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), canvas_height))
+        else:
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _bind_mousewheel(self, event=None):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", lambda e: self._on_scroll_step(-1))
+        self.canvas.bind_all("<Button-5>", lambda e: self._on_scroll_step(1))
+
+    def _unbind_mousewheel(self, event=None):
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event):
+        content_height = self.stream_inner_frame.winfo_reqheight()
+        canvas_height = self.canvas.winfo_height()
+        if content_height <= canvas_height:
+            return
+
+        if platform.system() == "Darwin":
+            self.canvas.yview_scroll(int(-1 * event.delta), "units")
+        else:
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_scroll_step(self, step: int):
+        content_height = self.stream_inner_frame.winfo_reqheight()
+        canvas_height = self.canvas.winfo_height()
+        if content_height > canvas_height:
+            self.canvas.yview_scroll(step, "units")
+
     def _create_footer_ui(self):
         footer = tk.Frame(self, bg="#ffffff", padx=12, pady=10, highlightthickness=1, highlightbackground="#f1f5f9")
         footer.pack(fill=tk.X, side=tk.BOTTOM)
 
-        lbl_sync = tk.Label(
+        btn_sync = tk.Button(
             footer,
-            text="⚡ Plaid Stream Ready",
-            font=("Helvetica", 9, "italic"),
-            fg="#94a3b8",
-            bg="#ffffff"
+            text="⚡ Sync Bank Feed",
+            font=("Helvetica", 10, "bold"),
+            fg="#0284c7",
+            bg="#f0f9ff",
+            activeforeground="#0369a1",
+            activebackground="#e0f2fe",
+            relief=tk.FLAT,
+            bd=0,
+            padx=8,
+            pady=7,
+            cursor="hand2",
+            command=self._handle_simulate_sync
         )
-        lbl_sync.pack(side=tk.LEFT)
+        btn_sync.pack(fill=tk.X)
 
     def switch_tab(self, tab_id: str):
         self.current_tab = tab_id
@@ -136,7 +190,7 @@ class TransactionPanel(tk.Frame):
         month_name = calendar.month_name[self.current_month]
         self.lbl_month_tag.config(text=f"{month_name} {self.current_year}")
 
-        # 1. Update tab badge counts and active tab styling
+        # 1. Update tab badge counts and active tab style
         counts = self.service.get_transaction_status_counts(self.current_year, self.current_month)
         for tid, btn in self.tab_buttons.items():
             cnt = counts.get(tid, 0)
@@ -162,9 +216,10 @@ class TransactionPanel(tk.Frame):
                     bd=0
                 )
 
-        # 2. Clear items
+        # 2. Clear items and reset scroll to top
         for child in self.stream_inner_frame.winfo_children():
             child.destroy()
+        self.canvas.yview_moveto(0.0)
 
         # 3. Load transactions for active tab
         transactions = self.service.get_transactions_by_status(
@@ -180,21 +235,35 @@ class TransactionPanel(tk.Frame):
                 font=("Helvetica", 9, "italic"),
                 fg="#94a3b8",
                 bg="#ffffff",
-                pady=30
+                pady=40
             )
             lbl_empty.pack(fill=tk.BOTH, expand=True)
             return
 
-        # Fetch category map for labeling
-        all_cats = {c.id: c.name for c in self.service.repository.get_all_categories(include_archived=True)}
+        # Fetch category map
+        all_categories = self.service.repository.get_all_categories(include_archived=False)
+        cat_id_to_name = {c.id: c.name for c in all_categories}
+        cat_name_to_id = {c.name: c.id for c in all_categories}
 
         # 4. Render transaction cards
         for tx in transactions:
-            self._create_transaction_card(tx, all_cats.get(tx.category_id, "Uncategorized"))
+            self._create_transaction_card(tx, cat_id_to_name, cat_name_to_id)
 
-    def _create_transaction_card(self, tx, cat_name: str):
-        card = tk.Frame(self.stream_inner_frame, bg="#ffffff", highlightthickness=1, highlightbackground="#f1f5f9", padx=8, pady=8)
-        card.pack(fill=tk.X, pady=(0, 6))
+    def _create_transaction_card(
+        self,
+        tx,
+        cat_id_to_name: Dict[int, str],
+        cat_name_to_id: Dict[str, int]
+    ):
+        card = tk.Frame(
+            self.stream_inner_frame,
+            bg="#ffffff",
+            highlightthickness=1,
+            highlightbackground="#e2e8f0",
+            padx=10,
+            pady=8
+        )
+        card.pack(fill=tk.X, pady=(0, 8))
 
         # Top Row: Date Badge & Amount
         top_row = tk.Frame(card, bg="#ffffff")
@@ -204,7 +273,7 @@ class TransactionPanel(tk.Frame):
         lbl_date = tk.Label(
             top_row,
             text=date_str,
-            font=("Helvetica", 9, "bold"),
+            font=("Helvetica", 8, "bold"),
             bg="#f1f5f9",
             fg="#475569",
             padx=5,
@@ -212,50 +281,114 @@ class TransactionPanel(tk.Frame):
         )
         lbl_date.pack(side=tk.LEFT)
 
-        # Amount styling
         amt = float(tx.amount)
-        amt_str = f"+${amt:,.2f}" if self.current_tab == "new" else f"${amt:,.2f}"
         lbl_amt = tk.Label(
             top_row,
-            text=amt_str,
+            text=f"${amt:,.2f}",
             font=("Helvetica", 10, "bold"),
             bg="#ffffff",
             fg="#0f172a"
         )
         lbl_amt.pack(side=tk.RIGHT)
 
-        # Middle Row: Note / Description
-        note_text = tx.note if tx.note else "Transaction"
+        # Middle Row: Note / Merchant
         lbl_note = tk.Label(
             card,
-            text=note_text,
-            font=("Helvetica", 10),
+            text=tx.note or "Bank Transaction",
+            font=("Helvetica", 10, "bold"),
             fg="#1e293b",
             bg="#ffffff",
             anchor="w"
         )
-        lbl_note.pack(fill=tk.X, pady=(4, 2))
+        lbl_note.pack(fill=tk.X, pady=(4, 6))
 
-        # Bottom Row: Category Tag & Action Triggers
+        # Bottom Row: Category and Action Controls
         bottom_row = tk.Frame(card, bg="#ffffff")
-        bottom_row.pack(fill=tk.X, pady=(2, 0))
+        bottom_row.pack(fill=tk.X)
 
-        lbl_cat = tk.Label(
-            bottom_row,
-            text=f"📁 {cat_name}",
-            font=("Helvetica", 8),
-            fg="#64748b",
-            bg="#ffffff"
-        )
-        lbl_cat.pack(side=tk.LEFT)
+        # TAB 1: NEW (Staged settlements awaiting envelope assignment)
+        if self.current_tab == "new":
+            selected_cat_var = tk.StringVar()
+            current_cat_name = cat_id_to_name.get(tx.category_id, "")
+            selected_cat_var.set(current_cat_name)
 
-        # Context Actions per Tab
-        actions_frame = tk.Frame(bottom_row, bg="#ffffff")
-        actions_frame.pack(side=tk.RIGHT)
+            cat_options = sorted(list(cat_name_to_id.keys()))
+            cmb_category = ttk.Combobox(
+                bottom_row,
+                textvariable=selected_cat_var,
+                values=cat_options,
+                state="readonly",
+                font=("Helvetica", 9),
+                width=14
+            )
+            cmb_category.pack(side=tk.LEFT, padx=(0, 6))
 
-        if self.current_tab == "tracked":
+            actions = tk.Frame(bottom_row, bg="#ffffff")
+            actions.pack(side=tk.RIGHT)
+
+            btn_track = tk.Button(
+                actions,
+                text="Track",
+                font=("Helvetica", 9, "bold"),
+                fg="#16a34a",
+                bg="#ffffff",
+                relief=tk.FLAT,
+                bd=0,
+                cursor="hand2",
+                command=lambda: self._handle_assign_and_track(tx.id, selected_cat_var.get(), cat_name_to_id)
+            )
+            btn_track.pack(side=tk.LEFT, padx=(0, 4))
+
+            btn_ignore = tk.Button(
+                actions,
+                text="✕",
+                font=("Helvetica", 9),
+                fg="#94a3b8",
+                bg="#ffffff",
+                activeforeground="#ef4444",
+                relief=tk.FLAT,
+                bd=0,
+                cursor="hand2",
+                command=lambda: self._handle_soft_delete(tx.id)
+            )
+            btn_ignore.pack(side=tk.LEFT)
+
+        # TAB 2: PENDING (Read-Only: Holds awaiting bank clearance)
+        elif self.current_tab == "pending":
+            lbl_pending_badge = tk.Label(
+                bottom_row,
+                text="⏳ Pending Clearance",
+                font=("Helvetica", 8, "bold"),
+                fg="#d97706",
+                bg="#fef3c7",
+                padx=6,
+                pady=2
+            )
+            lbl_pending_badge.pack(side=tk.LEFT)
+
+            lbl_pending_hint = tk.Label(
+                bottom_row,
+                text="Auto-settles when posted",
+                font=("Helvetica", 8, "italic"),
+                fg="#94a3b8",
+                bg="#ffffff"
+            )
+            lbl_pending_hint.pack(side=tk.RIGHT)
+
+        # TAB 3: TRACKED (Confirmed and active in budget)
+        elif self.current_tab == "tracked":
+            cat_display = cat_id_to_name.get(tx.category_id, "Uncategorized")
+            lbl_cat = tk.Label(
+                bottom_row,
+                text=f"📁 {cat_display}",
+                font=("Helvetica", 9),
+                fg="#64748b",
+                bg="#ffffff"
+            )
+            lbl_cat.pack(side=tk.LEFT)
+
             btn_del = tk.Button(
-                actions_frame,
+                bottom_row,
                 text="Delete",
                 font=("Helvetica", 8),
                 fg="#ef4444",
@@ -265,11 +398,25 @@ class TransactionPanel(tk.Frame):
                 cursor="hand2",
                 command=lambda: self._handle_soft_delete(tx.id)
             )
-            btn_del.pack(side=tk.LEFT)
+            btn_del.pack(side=tk.RIGHT)
 
+        # TAB 4: DELETED (Soft-deleted transactions)
         elif self.current_tab == "deleted":
+            cat_display = cat_id_to_name.get(tx.category_id, "Uncategorized")
+            lbl_cat = tk.Label(
+                bottom_row,
+                text=f"📁 {cat_display}",
+                font=("Helvetica", 9),
+                fg="#94a3b8",
+                bg="#ffffff"
+            )
+            lbl_cat.pack(side=tk.LEFT)
+
+            actions = tk.Frame(bottom_row, bg="#ffffff")
+            actions.pack(side=tk.RIGHT)
+
             btn_restore = tk.Button(
-                actions_frame,
+                actions,
                 text="Restore",
                 font=("Helvetica", 8),
                 fg="#0284c7",
@@ -282,7 +429,7 @@ class TransactionPanel(tk.Frame):
             btn_restore.pack(side=tk.LEFT, padx=(0, 6))
 
             btn_hard_del = tk.Button(
-                actions_frame,
+                actions,
                 text="✕",
                 font=("Helvetica", 8),
                 fg="#ef4444",
@@ -294,48 +441,53 @@ class TransactionPanel(tk.Frame):
             )
             btn_hard_del.pack(side=tk.LEFT)
 
-        elif self.current_tab in ("new", "pending"):
-            btn_track = tk.Button(
-                actions_frame,
-                text="Track",
-                font=("Helvetica", 8, "bold"),
-                fg="#16a34a",
-                bg="#ffffff",
-                relief=tk.FLAT,
-                bd=0,
-                cursor="hand2",
-                command=lambda: self._handle_track_incoming(tx.id)
-            )
-            btn_track.pack(side=tk.LEFT, padx=(0, 6))
+    def _handle_simulate_sync(self):
+        batch = MockStreamGenerator.generate_batch(
+            count=4,
+            year=self.current_year,
+            month=self.current_month
+        )
+        self.stream_service.ingest_payload(batch)
+        self.refresh()
+        self.on_data_changed()
 
-            btn_del = tk.Button(
-                actions_frame,
-                text="Ignore",
-                font=("Helvetica", 8),
-                fg="#ef4444",
-                bg="#ffffff",
-                relief=tk.FLAT,
-                bd=0,
-                cursor="hand2",
-                command=lambda: self._handle_soft_delete(tx.id)
+    def _handle_assign_and_track(
+        self,
+        tx_id: int,
+        category_name: str,
+        cat_name_to_id: Dict[str, int]
+    ):
+        top = self.winfo_toplevel()
+        if not category_name or category_name not in cat_name_to_id:
+            messagebox.showwarning(
+                "Select Category",
+                "Please select an envelope category before tracking this transaction.",
+                parent=top
             )
-            btn_del.pack(side=tk.LEFT)
+            return
+
+        cat_id = cat_name_to_id[category_name]
+        self.service.repository.assign_transaction_category(tx_id, cat_id)
+        self.refresh()
+        self.on_data_changed()
 
     def _handle_soft_delete(self, tx_id: int):
         self.service.update_transaction_status(tx_id, "deleted")
+        self.refresh()
         self.on_data_changed()
 
     def _handle_restore(self, tx_id: int):
         self.service.update_transaction_status(tx_id, "tracked")
-        self.on_data_changed()
-
-    def _handle_track_incoming(self, tx_id: int):
-        self.service.update_transaction_status(tx_id, "tracked")
+        self.refresh()
         self.on_data_changed()
 
     def _handle_hard_delete(self, tx_id: int):
-            """Prompts confirmation on root toplevel and permanently deletes transaction."""
-            top = self.winfo_toplevel()
-            if messagebox.askyesno("Confirm Permanent Delete", "Are you sure you want to permanently delete this transaction?\n\nThis cannot be undone.", parent=top):
-                self.service.hard_delete_transaction(tx_id)
-                self.on_data_changed()
+        top = self.winfo_toplevel()
+        if messagebox.askyesno(
+            "Confirm Permanent Delete",
+            "Are you sure you want to permanently delete this transaction?\n\nThis cannot be undone.",
+            parent=top
+        ):
+            self.service.hard_delete_transaction(tx_id)
+            self.refresh()
+            self.on_data_changed()

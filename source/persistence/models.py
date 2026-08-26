@@ -34,13 +34,14 @@ class TransactionModel(Base):
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    external_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     trans_date: Mapped[date] = mapped_column(nullable=False)
     note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="tracked", nullable=False)
 
-    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("categories.id"))
-    category: Mapped[Optional[CategoryModel]] = relationship(back_populates="transactions")
+    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    category: Mapped[Optional["CategoryModel"]] = relationship(back_populates="transactions")
 
 class MonthlyAllocationModel(Base):
     __tablename__ = "monthly_allocations"

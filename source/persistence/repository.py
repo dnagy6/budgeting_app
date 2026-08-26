@@ -267,15 +267,16 @@ class BudgetRepository:
             session.commit()
             return True
 
-    # TRANSACTION OPERATIONS
+    #-------- TRANSACTION OPERATIONS ----------
 
     def add_transaction(
-        self, 
-        amount: Decimal, 
-        trans_date: date, 
-        category_id: Optional[int] = None, 
+        self,
+        amount: Decimal,
+        trans_date: date,
+        category_id: Optional[int] = None,
         note: Optional[str] = None,
-        status: str = "tracked"
+        status: str = "tracked",
+        external_id: Optional[str] = None
     ) -> TransactionModel:
         """Creates and saves a new transaction."""
         with SessionLocal() as session:
@@ -284,7 +285,8 @@ class BudgetRepository:
                 trans_date=trans_date,
                 category_id=category_id,
                 note=note,
-                status = status
+                status=status,
+                external_id=external_id
             )
             session.add(transaction)
             session.commit()
@@ -310,6 +312,23 @@ class BudgetRepository:
                 return True
             return False
 
+    def get_transaction_by_external_id(self, external_id: str) -> Optional[TransactionModel]:
+        """Fetches a transaction by external/Plaid ID for deduplication."""
+        with SessionLocal() as session:
+            stmt = select(TransactionModel).where(TransactionModel.external_id == external_id)
+            return session.scalars(stmt).first()
+
+    def assign_transaction_category(self, transaction_id: int, category_id: int) -> bool:
+        """Assigns an envelope category to a transaction and updates status to tracked."""
+        with SessionLocal() as session:
+            tx = session.get(TransactionModel, transaction_id)
+            if tx:
+                tx.category_id = category_id
+                tx.status = "tracked"
+                session.commit()
+                return True
+            return False
+
     def delete_transaction(self, transaction_id: int) -> bool:
         """Permanently deletes a transaction from the database."""
         with SessionLocal() as session:
@@ -320,7 +339,7 @@ class BudgetRepository:
                 return True
             return False
 
-    # MONTHLY OPERATIONS
+    #------- MONTHLY OPERATIONS -----------
 
     def delete_monthly_allocation(self, category_id: int, year: int, month: int) -> bool:
         """Deletes only the allocation record for a specific category in a specific month."""
