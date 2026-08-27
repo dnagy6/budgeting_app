@@ -1,6 +1,6 @@
 """
 File: source/gui/widgets/expense_card.py
-Purpose: Container component managing the fixed income section, scrollable expense canvas, and group card rendering.
+Purpose: Container component managing fixed income, scrollable expense canvas, and smooth cross-platform scrolling.
 """
 
 import tkinter as tk
@@ -38,52 +38,59 @@ class ExpenseCard(tk.Frame):
         )
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # Cross-platform mouse wheel scroll bindings
-        self.canvas.bind_all("<MouseWheel>", self._on_mouse_wheel)
-        self.canvas.bind_all("<Button-4>", self._on_mouse_wheel)
-        self.canvas.bind_all("<Button-5>", self._on_mouse_wheel)
+        # 3. Clean Container-Level Scroll Bindings (Works anywhere inside the expense card area)
+        for widget in (self, expense_container, self.canvas, self.groups_inner_frame):
+            widget.bind("<MouseWheel>", self._on_mouse_wheel)
+            widget.bind("<Button-4>", self._on_mouse_wheel)
+            widget.bind("<Button-5>", self._on_mouse_wheel)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _on_mouse_wheel(self, event):
-        """Cross-platform mouse wheel scrolling handler."""
+        """Robust cross-platform scroll handler with delta clipping to prevent jumping."""
         if event.num == 4:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5:
             self.canvas.yview_scroll(1, "units")
         else:
-            amount = int(-1 * (event.delta / 120)) if abs(event.delta) >= 120 else -1 * event.delta
-            self.canvas.yview_scroll(amount, "units")
+            if event.delta:
+                # Normalize mouse wheel (120) vs macOS trackpad fine deltas
+                if abs(event.delta) >= 120:
+                    amount = int(-1 * (event.delta / 120))
+                else:
+                    # Smooth trackpad damping with hard limits to prevent runaway jumping
+                    amount = -1 if event.delta > 0 else 1
+                
+                # Clamp scroll units per tick to eliminate erratic hyper-scrolling
+                amount = max(-3, min(3, amount))
+                self.canvas.yview_scroll(amount, "units")
+        return "break" # Prevent event propagation bubbling up to global windows
 
     def _bind_mouse_wheel_recursive(self, widget):
-        """Recursively binds scroll events to child widgets so hovering anywhere works."""
-        widget.bind("<MouseWheel>", self._on_mouse_wheel, add="+")
-        widget.bind("<Button-4>", self._on_mouse_wheel, add="+")
-        widget.bind("<Button-5>", self._on_mouse_wheel, add="+")
+        """Recursively binds scroll events to dynamically rendered child cards."""
+        widget.bind("<MouseWheel>", self._on_mouse_wheel)
+        widget.bind("<Button-4>", self._on_mouse_wheel)
+        widget.bind("<Button-5>", self._on_mouse_wheel)
         for child in widget.winfo_children():
             self._bind_mouse_wheel_recursive(child)
 
     def render_groups(self, groups: list, callbacks: dict):
         """Captures expansion states, clears old cards, separates income/expenses, and renders cards."""
-        # 1. Capture current expansion states across all rendered cards
         card_states = {}
         for container in (self.income_container, self.groups_inner_frame):
             for card in container.winfo_children():
                 if isinstance(card, CategoryGroupCard):
                     card_states[card.group.name] = card.is_expanded
 
-        # 2. Clear existing cards from both containers
         for child in self.income_container.winfo_children():
             child.destroy()
         for child in self.groups_inner_frame.winfo_children():
             child.destroy()
 
-        # 3. Separate Income groups from Expense groups
         income_groups = [g for g in groups if g.group_type == "income" or g.name.lower() == "income"]
         expense_groups = [g for g in groups if g.group_type != "income" and g.name.lower() != "income"]
 
-        # 4. Render Income Card(s)
         for grp in income_groups:
             was_expanded = card_states.get(grp.name, True)
             card = CategoryGroupCard(
@@ -94,7 +101,6 @@ class ExpenseCard(tk.Frame):
             )
             card.pack(fill=tk.X, expand=True)
 
-        # 5. Render Expense Cards or Empty State
         if not expense_groups:
             lbl_empty = tk.Label(
                 self.groups_inner_frame,
@@ -116,6 +122,5 @@ class ExpenseCard(tk.Frame):
                 )
                 card.pack(fill=tk.X, padx=4, pady=6)
 
-        # 6. Apply recursive mouse wheel binding to newly rendered elements
         self._bind_mouse_wheel_recursive(self.groups_inner_frame)
         self._bind_mouse_wheel_recursive(self.income_container)
