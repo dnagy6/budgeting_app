@@ -6,7 +6,7 @@ Purpose: Left-rail navigation sidebar with view tabs and workspace/profile trigg
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
-
+from source.settings import Theme
 
 class NavSidebar(tk.Frame):
     def __init__(
@@ -16,7 +16,7 @@ class NavSidebar(tk.Frame):
         on_profile_click: Optional[Callable[[], None]] = None,
         **kwargs
     ):
-        super().__init__(parent, bg="#0f172a", width=170, **kwargs)
+        super().__init__(parent, bg=Theme.BG_SIDEBAR, width=170, **kwargs)
         self.pack_propagate(False)
         self.on_tab_change = on_tab_change
         self.on_profile_click = on_profile_click
@@ -26,15 +26,15 @@ class NavSidebar(tk.Frame):
 
     def _create_ui(self):
         # 1. Branding Header
-        brand_frame = tk.Frame(self, bg="#0f172a")
+        brand_frame = tk.Frame(self, bg=Theme.SIDEBAR_BG)
         brand_frame.pack(fill=tk.X, padx=16, pady=(20, 24))
 
         lbl_app = tk.Label(
             brand_frame,
             text="EXPENSE",
-            font=("Helvetica", 14, "bold"),
-            fg="#38bdf8",
-            bg="#0f172a",
+            font=("Avenir", 14, "bold"),
+            fg=Theme.BRAND_HIGHLIGHT,
+            bg=Theme.SIDEBAR_BG,
             anchor="w"
         )
         lbl_app.pack(fill=tk.X)
@@ -42,18 +42,18 @@ class NavSidebar(tk.Frame):
         lbl_sub = tk.Label(
             brand_frame,
             text="TRACKER",
-            font=("Helvetica", 10, "bold"),
-            fg="#94a3b8",
-            bg="#0f172a",
+            font=("Avenir", 10, "bold"),
+            fg=Theme.SIDEBAR_TEXT_INACTIVE,
+            bg=Theme.SIDEBAR_BG,
             anchor="w"
         )
         lbl_sub.pack(fill=tk.X)
 
-        # 2. Navigation Tabs
-        self.tabs_frame = tk.Frame(self, bg="#0f172a")
+        # 2. Navigation Tabs (Using Frames & Labels to bypass macOS button bugs)
+        self.tabs_frame = tk.Frame(self, bg=Theme.SIDEBAR_BG)
         self.tabs_frame.pack(fill=tk.X, padx=10, expand=True, anchor="n")
 
-        self.buttons = {}
+        self.tab_containers = {}
         nav_items = [
             ("budget", "Budget"),
             ("accounts", "Accounts"),
@@ -61,54 +61,66 @@ class NavSidebar(tk.Frame):
         ]
 
         for tab_id, label in nav_items:
-            btn = tk.Button(
+            is_active = (tab_id == self.active_tab)
+            
+            # Container Frame for the tab
+            container = tk.Frame(
                 self.tabs_frame,
+                bg=Theme.SIDEBAR_ACTIVE_BG if is_active else Theme.SIDEBAR_BG,
+                cursor="hand2"
+            )
+            container.pack(fill=tk.X, pady=4)
+
+            # Text Label inside container
+            lbl = tk.Label(
+                container,
                 text=label,
-                font=("Helvetica", 12, "bold" if tab_id == self.active_tab else "normal"),
-                fg="#ffffff" if tab_id == self.active_tab else "#94a3b8",
-                bg="#1e293b" if tab_id == self.active_tab else "#0f172a",
-                activebackground="#1e293b",
-                activeforeground="#ffffff",
-                relief=tk.FLAT,
-                bd=0,
+                font=("Avenir", 12, "bold" if is_active else "normal"),
+                fg=Theme.SIDEBAR_TEXT_ACTIVE if is_active else Theme.SIDEBAR_TEXT_INACTIVE,
+                bg=Theme.SIDEBAR_ACTIVE_BG if is_active else Theme.SIDEBAR_BG,
                 anchor="w",
                 padx=14,
-                pady=10,
-                cursor="hand2",
-                command=lambda t=tab_id: self.select_tab(t)
+                pady=10
             )
-            btn.pack(fill=tk.X, pady=3)
-            self.buttons[tab_id] = btn
+            lbl.pack(fill=tk.BOTH, expand=True)
+
+            # Bind clicks to both container and label for seamless interaction
+            for widget in (container, lbl):
+                widget.bind("<Button-1>", lambda e, t=tab_id: self.select_tab(t))
+
+            self.tab_containers[tab_id] = (container, lbl)
 
         # 3. Bottom Profile Selector Slot
-        bottom_frame = tk.Frame(self, bg="#0f172a")
+        bottom_frame = tk.Frame(self, bg=Theme.SIDEBAR_BG)
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=16)
 
-        self.btn_profile = tk.Button(
-            bottom_frame,
+        self.profile_container = tk.Frame(bottom_frame, bg=Theme.SIDEBAR_ACTIVE_BG, cursor="hand2")
+        self.profile_container.pack(fill=tk.X)
+
+        lbl_profile = tk.Label(
+            self.profile_container,
             text="👤 Personal ▾",
-            font=("Helvetica", 11),
-            fg="#e2e8f0",
-            bg="#1e293b",
-            activebackground="#334155",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            bd=0,
+            font=("Avenir", 11),
+            fg=Theme.SIDEBAR_TEXT_ACTIVE,
+            bg=Theme.SIDEBAR_ACTIVE_BG,
             anchor="w",
             padx=12,
-            pady=8,
-            cursor="hand2",
-            command=self._handle_profile_click
+            pady=8
         )
-        self.btn_profile.pack(fill=tk.X)
+        lbl_profile.pack(fill=tk.BOTH, expand=True)
+
+        for widget in (self.profile_container, lbl_profile):
+            widget.bind("<Button-1>", lambda e: self._handle_profile_click())
 
     def select_tab(self, tab_id: str):
         self.active_tab = tab_id
-        for tid, btn in self.buttons.items():
+        for tid, (container, lbl) in self.tab_containers.items():
             if tid == tab_id:
-                btn.config(bg="#1e293b", fg="#ffffff", font=("Helvetica", 12, "bold"))
+                container.config(bg=Theme.SIDEBAR_ACTIVE_BG)
+                lbl.config(bg=Theme.SIDEBAR_ACTIVE_BG, fg=Theme.SIDEBAR_TEXT_ACTIVE, font=("Avenir", 12, "bold"))
             else:
-                btn.config(bg="#0f172a", fg="#94a3b8", font=("Helvetica", 12, "normal"))
+                container.config(bg=Theme.SIDEBAR_BG)
+                lbl.config(bg=Theme.SIDEBAR_BG, fg=Theme.SIDEBAR_TEXT_INACTIVE, font=("Avenir", 12, "normal"))
 
         if self.on_tab_change:
             self.on_tab_change(tab_id)
