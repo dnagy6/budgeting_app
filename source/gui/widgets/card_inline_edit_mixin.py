@@ -1,17 +1,26 @@
 """
 File: source/gui/widgets/card_inline_edit_mixin.py
-Purpose: Encapsulates click-to-edit labels and inline creation input rows.
+Purpose: Encapsulates click-to-edit labels and column-aligned inline creation input rows.
 """
 
 import tkinter as tk
 from tkinter import ttk
+from source.settings import Theme
 
 class CardInlineEditMixin:
     def _start_inline_group_name_edit(self):
         old_name = self.group.name
         self.lbl_title.pack_forget()
 
-        entry = tk.Entry(self.lbl_title.master, font=("Helvetica", 12, "bold"))
+        entry = tk.Entry(
+            self.lbl_title.master,
+            font=Theme.FONT_HEADER,
+            bg=Theme.BG_CARD,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=Theme.ACCENT_PRIMARY
+        )
         entry.insert(0, old_name)
         entry.select_range(0, tk.END)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -40,7 +49,15 @@ class CardInlineEditMixin:
         info = label.grid_info()
         label.grid_remove()
 
-        entry = tk.Entry(parent_grid, font=("Helvetica", 11))
+        entry = tk.Entry(
+            parent_grid,
+            font=Theme.FONT_BODY,
+            bg=Theme.BG_CARD,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=Theme.ACCENT_PRIMARY
+        )
         entry.insert(0, cat.name)
         entry.select_range(0, tk.END)
         entry.grid(row=info["row"], column=info["column"], sticky="w", pady=2)
@@ -67,7 +84,17 @@ class CardInlineEditMixin:
         info = label.grid_info()
         label.grid_remove()
 
-        entry = tk.Entry(parent_grid, font=("Helvetica", 11), width=10, justify="right")
+        entry = tk.Entry(
+            parent_grid,
+            font=Theme.FONT_BODY,
+            bg=Theme.BG_CARD,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=Theme.ACCENT_PRIMARY,
+            width=10,
+            justify="right"
+        )
         entry.insert(0, f"{cat.planned_amount:.2f}")
         entry.select_range(0, tk.END)
         entry.grid(row=info["row"], column=info["column"], sticky="e", padx=10, pady=2)
@@ -97,45 +124,81 @@ class CardInlineEditMixin:
         entry.bind("<Escape>", cancel)
 
     def _toggle_inline_add_row(self):
-        if hasattr(self, "inline_row_frame") and self.inline_row_frame.winfo_exists():
+        # If the group has no categories yet, render the table structure first so grid_table exists
+        if not self.group.categories:
+            self._render_category_grid()
+
+        if not hasattr(self, "grid_table") or not self.grid_table.winfo_exists():
             return
 
-        self.inline_row_frame = tk.Frame(self.body_frame, bg="#ffffff", pady=6)
-        self.inline_row_frame.pack(fill=tk.X, padx=16, before=self.footer_frame)
+        # Prevent opening duplicate input rows
+        if hasattr(self, "ent_name") and self.ent_name.winfo_exists():
+            return
 
-        self.ent_name = tk.Entry(self.inline_row_frame, font=("Helvetica", 11))
-        self.ent_name.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
-        self.ent_name.insert(0, "Name")
+        row_idx = len(self.group.categories) * 2 + 1
+
+        # Subtle divider above the input row
+        self.inline_div = tk.Frame(self.grid_table, bg=Theme.BORDER_SUBTLE, height=1)
+        self.inline_div.grid(row=row_idx, column=0, columnspan=5, sticky="ew", pady=2)
+        row_idx += 1
+
+        # Name Entry gridded directly into Column 0 (Category Name)
+        self.ent_name = tk.Entry(
+            self.grid_table,
+            font=Theme.FONT_BODY,
+            bg=Theme.BG_CARD,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=Theme.ACCENT_PRIMARY
+        )
+        self.ent_name.grid(row=row_idx, column=0, sticky="ew", pady=4)
         self.ent_name.focus_set()
-        self.ent_name.select_range(0, tk.END)
-        self.ent_name.bind("<FocusIn>", lambda e: self.ent_name.delete(0, tk.END) if self.ent_name.get() == "Name" else None)
 
-        self.ent_amount = tk.Entry(self.inline_row_frame, font=("Helvetica", 11), width=10)
-        self.ent_amount.pack(side=tk.LEFT, padx=(0, 6))
+        # Planned Amount Entry gridded directly into Column 1 (Planned)
+        self.ent_amount = tk.Entry(
+            self.grid_table,
+            font=Theme.FONT_BODY,
+            bg=Theme.BG_CARD,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER_SUBTLE,
+            width=10,
+            justify="right"
+        )
+        self.ent_amount.grid(row=row_idx, column=1, sticky="e", padx=(0, 10), pady=4)
         self.ent_amount.insert(0, "0.00")
 
-        btn_save = tk.Button(
-            self.inline_row_frame, text="✓", font=("Helvetica", 10, "bold"),
-            bg="#16a34a", fg="#ffffff", relief=tk.FLAT, bd=0, cursor="hand2",
-            command=self._commit_inline_item
-        )
-        btn_save.pack(side=tk.LEFT, padx=(0, 4))
+        # Smooth Keyboard Navigation: Enter on name moves to amount; Enter on amount saves.
+        def focus_amount(event):
+            self.ent_amount.focus_set()
+            self.ent_amount.select_range(0, tk.END)
+            return "break"
 
-        btn_cancel = tk.Button(
-            self.inline_row_frame, text="✕", font=("Helvetica", 10, "bold"),
-            bg="#ef4444", fg="#ffffff", relief=tk.FLAT, bd=0, cursor="hand2",
-            command=self.inline_row_frame.destroy
-        )
-        btn_cancel.pack(side=tk.LEFT)
+        def commit(event=None):
+            self._commit_inline_item()
 
-        self.ent_name.bind("<Return>", lambda e: self._commit_inline_item())
-        self.ent_amount.bind("<Return>", lambda e: self._commit_inline_item())
+        def cancel(event=None):
+            self._remove_inline_row()
+
+        self.ent_name.bind("<Return>", focus_amount)
+        self.ent_name.bind("<Escape>", cancel)
+        self.ent_amount.bind("<Return>", commit)
+        self.ent_amount.bind("<Escape>", cancel)
+
+    def _remove_inline_row(self):
+        for attr in ("ent_name", "ent_amount", "inline_div"):
+            if hasattr(self, attr) and getattr(self, attr).winfo_exists():
+                getattr(self, attr).destroy()
 
     def _commit_inline_item(self):
-        name = self.ent_name.get().strip()
-        raw_amount = self.ent_amount.get().strip()
+        name = self.ent_name.get().strip() if hasattr(self, "ent_name") else ""
+        raw_amount = self.ent_amount.get().strip() if hasattr(self, "ent_amount") else "0.00"
 
-        if not name or name == "Name":
+        self._remove_inline_row()
+
+        if not name:
             return
 
         try:
@@ -150,6 +213,3 @@ class CardInlineEditMixin:
                 planned_amount=amount,
                 category_type=self.group.group_type
             )
-
-        if hasattr(self, "inline_row_frame") and self.inline_row_frame.winfo_exists():
-            self.inline_row_frame.destroy()

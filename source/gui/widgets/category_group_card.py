@@ -1,11 +1,12 @@
 """
 File: source/gui/widgets/category_group_card.py
-Purpose: Main container for category groups combining layout, mixins, and grid rendering.
+Purpose: Main container for category groups combining layout, mixins, and grid rendering using central Theme tokens.
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Callable, Optional
+from source.settings import Theme
 from source.domain.category import Category
 from source.domain.category_group import CategoryGroup
 from source.gui.widgets.card_drag_mixin import CardDragMixin
@@ -26,7 +27,14 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
         initial_expanded: bool = True,
         **kwargs
     ):
-        super().__init__(parent, bg="#ffffff", highlightthickness=1, highlightbackground="#e2e8f0", bd=0, **kwargs)
+        super().__init__(
+            parent,
+            bg=Theme.BG_CARD,
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER_SUBTLE,
+            bd=0,
+            **kwargs
+        )
         self.group = group
         self.container_parent = parent
         self.on_add_category = on_add_category
@@ -42,30 +50,42 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
 
     def _create_ui(self):
         # 1. Group Header Bar
-        self.header_frame = tk.Frame(self, bg="#f8fafc", padx=12, pady=10)
+        self.header_frame = tk.Frame(self, bg=Theme.HOVER_BG, padx=12, pady=10)
         self.header_frame.pack(fill=tk.X)
 
-        controls_left = tk.Frame(self.header_frame, bg="#f8fafc")
+        controls_left = tk.Frame(self.header_frame, bg=Theme.HOVER_BG)
         controls_left.pack(side=tk.LEFT)
 
         if self.group.group_type != "income":
             self.lbl_grip = tk.Label(
-                controls_left, text="⋮⋮", font=("Helvetica", 14, "bold"),
-                bg="#f8fafc", fg="#94a3b8", cursor="fleur"
+                controls_left,
+                text="⋮⋮",
+                font=Theme.FONT_TITLE,
+                bg=Theme.HOVER_BG,
+                fg=Theme.TEXT_MUTED,
+                cursor="fleur"
             )
             self.lbl_grip.pack(side=tk.LEFT, padx=(0, 8))
             self._bind_drag_events(self.lbl_grip)
 
         self.lbl_arrow = tk.Label(
-            controls_left, text="▾", font=("Helvetica", 12, "bold"),
-            bg="#f8fafc", fg="#475569", cursor="hand2"
+            controls_left,
+            text="▾",
+            font=Theme.FONT_HEADER,
+            bg=Theme.HOVER_BG,
+            fg=Theme.TEXT_MUTED,
+            cursor="hand2"
         )
         self.lbl_arrow.pack(side=tk.LEFT, padx=(0, 6))
         self.lbl_arrow.bind("<Button-1>", lambda e: self.toggle_expand())
 
         self.lbl_title = tk.Label(
-            controls_left, text=self.group.name, font=("Helvetica", 12, "bold"),
-            bg="#f8fafc", fg="#0f172a", cursor="xterm"
+            controls_left,
+            text=self.group.name,
+            font=Theme.FONT_HEADER,
+            bg=Theme.HOVER_BG,
+            fg=Theme.TEXT_PRIMARY,
+            cursor="xterm"
         )
         self.lbl_title.pack(side=tk.LEFT)
         self.lbl_title.bind("<Button-1>", lambda e: self._start_inline_group_name_edit())
@@ -76,13 +96,16 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
 
         summary_text = f"Planned: ${total_planned:,.2f}  |  {actual_label}: ${total_actual:,.2f}"
         self.lbl_summary = tk.Label(
-            self.header_frame, text=summary_text, font=("Helvetica", 10, "bold"),
-            bg="#f8fafc", fg="#64748b"
+            self.header_frame,
+            text=summary_text,
+            font=Theme.FONT_LABEL,
+            bg=Theme.HOVER_BG,
+            fg=Theme.TEXT_MUTED
         )
         self.lbl_summary.pack(side=tk.RIGHT)
 
         # 2. Body Container
-        self.body_frame = tk.Frame(self, bg="#ffffff", padx=16, pady=6)
+        self.body_frame = tk.Frame(self, bg=Theme.BG_CARD, padx=16, pady=6)
         self.body_frame.pack(fill=tk.X)
 
         self._render_category_grid()
@@ -95,55 +118,61 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
         for child in self.body_frame.winfo_children():
             child.destroy()
 
+        # Always create the grid table container so inline add rows have a home
+        grid_table = tk.Frame(self.body_frame, bg=Theme.BG_CARD)
+        grid_table.pack(fill=tk.X)
+        self.grid_table = grid_table
+
+        grid_table.columnconfigure(0, weight=1)
+        grid_table.columnconfigure(1, minsize=120)
+        grid_table.columnconfigure(2, minsize=140)
+        grid_table.columnconfigure(3, minsize=120)
+        grid_table.columnconfigure(4, minsize=40)
+
+        actual_header = "RECEIVED" if self.group.group_type == "income" else "SPENT"
+        tk.Label(grid_table, text="CATEGORY", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        tk.Label(grid_table, text="PLANNED", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=1, sticky="e", padx=(0, 10), pady=(0, 6))
+        tk.Label(grid_table, text=actual_header, font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=2, sticky="e", padx=(0, 10), pady=(0, 6))
+        tk.Label(grid_table, text="REMAINING", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=3, sticky="e", padx=(0, 10), pady=(0, 6))
+
         if not self.group.categories:
             lbl_empty = tk.Label(
-                self.body_frame, text="No envelopes in this group yet.",
-                font=("Helvetica", 10, "italic"), fg="#94a3b8", bg="#ffffff", pady=8
+                grid_table,
+                text="No envelopes in this group yet.",
+                font=Theme.FONT_ITALIC_MUTED,
+                fg=Theme.TEXT_MUTED,
+                bg=Theme.BG_CARD
             )
-            lbl_empty.pack(anchor="w")
+            lbl_empty.grid(row=1, column=0, columnspan=4, sticky="w", pady=8)
+            current_row = 2
         else:
-            grid_table = tk.Frame(self.body_frame, bg="#ffffff")
-            grid_table.pack(fill=tk.X)
-
-            grid_table.columnconfigure(0, weight=1)
-            grid_table.columnconfigure(1, minsize=120)
-            grid_table.columnconfigure(2, minsize=140)
-            grid_table.columnconfigure(3, minsize=120)
-            grid_table.columnconfigure(4, minsize=40)
-
-            actual_header = "RECEIVED" if self.group.group_type == "income" else "SPENT"
-            tk.Label(grid_table, text="CATEGORY", font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=0, sticky="w", pady=(0, 6))
-            tk.Label(grid_table, text="PLANNED", font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=1, sticky="e", padx=(0, 10), pady=(0, 6))
-            tk.Label(grid_table, text=actual_header, font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=2, sticky="e", padx=(0, 10), pady=(0, 6))
-            tk.Label(grid_table, text="REMAINING", font=("Helvetica", 9, "bold"), fg="#94a3b8", bg="#ffffff").grid(row=0, column=3, sticky="e", padx=(0, 10), pady=(0, 6))
-
             current_row = 1
             for cat in self.group.categories:
-                div = tk.Frame(grid_table, bg="#f1f5f9", height=1)
+                div = tk.Frame(grid_table, bg=Theme.HOVER_BG, height=1)
                 div.grid(row=current_row, column=0, columnspan=5, sticky="ew", pady=2)
                 current_row += 1
 
-                l_name = tk.Label(grid_table, text=cat.name, font=("Helvetica", 11), fg="#1e293b", bg="#ffffff", cursor="xterm")
+                l_name = tk.Label(grid_table, text=cat.name, font=Theme.FONT_BODY, fg=Theme.TEXT_PRIMARY, bg=Theme.BG_CARD, cursor="xterm")
                 l_name.grid(row=current_row, column=0, sticky="w", pady=4)
                 l_name.bind("<Button-1>", lambda e, c=cat, l=l_name: self._start_inline_name_edit(c, l, grid_table))
 
-                l_planned = tk.Label(grid_table, text=f"${cat.planned_amount:,.2f}", font=("Helvetica", 11), fg="#0284c7", bg="#ffffff", cursor="hand2")
+                l_planned = tk.Label(grid_table, text=f"${cat.planned_amount:,.2f}", font=Theme.FONT_BODY, fg=Theme.ACCENT_PRIMARY, bg=Theme.BG_CARD, cursor="hand2")
                 l_planned.grid(row=current_row, column=1, sticky="e", padx=(0, 10), pady=4)
                 l_planned.bind("<Button-1>", lambda e, c=cat, l=l_planned: self._start_inline_amount_edit(c, l, grid_table))
 
                 actual_val = cat.get_actual_amount()
-                tk.Label(grid_table, text=f"${actual_val:,.2f}", font=("Helvetica", 11), fg="#334155", bg="#ffffff").grid(row=current_row, column=2, sticky="e", padx=(0, 10), pady=4)
+                tk.Label(grid_table, text=f"${actual_val:,.2f}", font=Theme.FONT_BODY, fg=Theme.TEXT_PRIMARY, bg=Theme.BG_CARD).grid(row=current_row, column=2, sticky="e", padx=(0, 10), pady=4)
 
                 rem_val = cat.get_remaining_amount()
                 if self.group.group_type == "income":
-                    rem_color = "#16a34a" if actual_val >= cat.planned_amount else "#dc2626"
+                    rem_color = Theme.SUCCESS if actual_val >= cat.planned_amount else Theme.DANGER
                 else:
-                    rem_color = "#dc2626" if rem_val < 0 else "#16a34a"
+                    rem_color = Theme.DANGER if rem_val < 0 else Theme.SUCCESS
 
-                tk.Label(grid_table, text=f"${rem_val:,.2f}", font=("Helvetica", 11, "bold"), fg=rem_color, bg="#ffffff").grid(row=current_row, column=3, sticky="e", padx=(0, 10), pady=4)
+                tk.Label(grid_table, text=f"${rem_val:,.2f}", font=Theme.FONT_HEADER, fg=rem_color, bg=Theme.BG_CARD).grid(row=current_row, column=3, sticky="e", padx=(0, 10), pady=4)
 
                 btn_del = tk.Button(
-                    grid_table, text="✕", font=("Helvetica", 10), fg="#ef4444", bg="#ffffff",
+                    grid_table, text="✕", font=Theme.FONT_HEADER, fg=Theme.DANGER, bg=Theme.BG_CARD,
                     relief=tk.FLAT, bd=0, cursor="hand2", command=lambda n=cat.name: self.on_delete_category(n)
                 )
                 btn_del.grid(row=current_row, column=4, sticky="e", padx=(4, 0))
@@ -151,7 +180,7 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
                 current_row += 1
 
         # Footer Action Bar
-        self.footer_frame = tk.Frame(self.body_frame, bg="#ffffff")
+        self.footer_frame = tk.Frame(self.body_frame, bg=Theme.BG_CARD)
         self.footer_frame.pack(fill=tk.X, pady=(12, 4))
 
         add_btn_text = "+ Add Income" if self.group.group_type == "income" else "+ Add Expense"
@@ -163,8 +192,8 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
 
         if self.group.group_type != "income":
             btn_del_grp = tk.Button(
-                self.footer_frame, text="Delete Group", font=("Helvetica", 9),
-                fg="#94a3b8", bg="#ffffff", activeforeground="#ef4444", activebackground="#ffffff",
+                self.footer_frame, text="Delete Group", font=Theme.FONT_LABEL,
+                fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD, activeforeground=Theme.DANGER, activebackground=Theme.BG_CARD,
                 relief=tk.FLAT, bd=0, cursor="hand2", command=lambda: self.on_delete_group(self.group.name)
             )
             btn_del_grp.pack(side=tk.RIGHT)
