@@ -7,8 +7,6 @@ from tkinter import ttk, messagebox
 from source.settings import Theme, AppConfig
 from source.domain.budget import Budget
 from source.domain.category import Category
-from source.gui.dialogs.category_dialog import AddCategoryDialog
-from source.gui.dialogs.category_group_dialog import AddCategoryGroupDialog
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
 from source.persistence.repository import BudgetRepository
 from source.services.budget_service import BudgetService
@@ -183,6 +181,17 @@ class BudgetApp:
         )
         self.reload_and_refresh()
 
+    def handle_inline_category_save(self, group_name: str, category_name: str, planned_amount: float, category_type: str):
+        """Saves a new category created via the inline card input row directly to SQLite."""
+        self.service.save_category(
+            budget=self.current_budget,
+            name=category_name,
+            planned_amount=planned_amount,
+            group_name=group_name,
+            category_type=category_type
+        )
+        self.reload_and_refresh()
+
     def handle_group_reorder_complete(self, ordered_names: list[str]):
         """Persists the explicit visual order to SQLite and refreshes."""
         self.service.reorder_category_groups(ordered_names)
@@ -338,6 +347,7 @@ class BudgetApp:
         self.expense_card.render_groups(
             groups=self.current_budget.groups,
             callbacks={
+                "on_inline_save_category": self.handle_inline_category_save,
                 "on_add_category": self.open_add_category_to_group,
                 "on_inline_edit": self.handle_inline_category_edit,
                 "on_delete_category": self.delete_category_envelope,
