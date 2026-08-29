@@ -1,14 +1,15 @@
 """
 File: source/gui/widgets/expense_card.py
-Purpose: Container component managing fixed income, scrollable expense canvas, and smooth cross-platform scrolling.
+Purpose: Container component managing fixed income, scrollable expense canvas, and smooth cross-platform scrolling via mixin.
 """
 
 import tkinter as tk
 from tkinter import ttk
 from source.settings import Theme
 from source.gui.widgets.category_group_card import CategoryGroupCard
+from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
 
-class ExpenseCard(tk.Frame):
+class ExpenseCard(tk.Frame, ScrollableCanvasMixin):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, bg=Theme.BG_CARD, **kwargs)
         self._create_ui()
@@ -26,54 +27,14 @@ class ExpenseCard(tk.Frame):
         self.scrollbar = ttk.Scrollbar(expense_container, orient=tk.VERTICAL, command=self.canvas.yview)
         self.groups_inner_frame = tk.Frame(self.canvas, bg=Theme.BG_CARD)
 
-        self.groups_inner_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        self.canvas_window = self.canvas.create_window((0, 0), window=self.groups_inner_frame, anchor="nw")
-
-        self.canvas.bind(
-            "<Configure>",
-            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
-        )
+        self._scroll_canvas_window = self.canvas.create_window((0, 0), window=self.groups_inner_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 3. Clean Container-Level Scroll Bindings (Works anywhere inside the expense card area)
-        for widget in (self, expense_container, self.canvas, self.groups_inner_frame):
-            widget.bind("<MouseWheel>", self._on_mouse_wheel)
-            widget.bind("<Button-4>", self._on_mouse_wheel)
-            widget.bind("<Button-5>", self._on_mouse_wheel)
+        # Initialize scrollable canvas mixin behaviors
+        self._init_scrollable_mixin(expense_container, self.canvas, self.groups_inner_frame)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _on_mouse_wheel(self, event):
-        """Robust cross-platform scroll handler with delta clipping to prevent jumping."""
-        if event.num == 4:
-            self.canvas.yview_scroll(-1, "units")
-        elif event.num == 5:
-            self.canvas.yview_scroll(1, "units")
-        else:
-            if event.delta:
-                # Normalize mouse wheel (120) vs macOS trackpad fine deltas
-                if abs(event.delta) >= 120:
-                    amount = int(-1 * (event.delta / 120))
-                else:
-                    # Smooth trackpad damping with hard limits to prevent runaway jumping
-                    amount = -1 if event.delta > 0 else 1
-                
-                # Clamp scroll units per tick to eliminate erratic hyper-scrolling
-                amount = max(-3, min(3, amount))
-                self.canvas.yview_scroll(amount, "units")
-        return "break" # Prevent event propagation bubbling up to global windows
-
-    def _bind_mouse_wheel_recursive(self, widget):
-        """Recursively binds scroll events to dynamically rendered child cards."""
-        widget.bind("<MouseWheel>", self._on_mouse_wheel)
-        widget.bind("<Button-4>", self._on_mouse_wheel)
-        widget.bind("<Button-5>", self._on_mouse_wheel)
-        for child in widget.winfo_children():
-            self._bind_mouse_wheel_recursive(child)
 
     def render_groups(self, groups: list, callbacks: dict):
         """Captures expansion states, clears old cards, separates income/expenses, and renders cards."""
@@ -121,6 +82,5 @@ class ExpenseCard(tk.Frame):
                     **callbacks
                 )
                 card.pack(fill=tk.X, padx=4, pady=6)
-
-        self._bind_mouse_wheel_recursive(self.groups_inner_frame)
-        self._bind_mouse_wheel_recursive(self.income_container)
+        # self._bind_mousewheel_recursive(self.groups_inner_frame)
+        # self._bind_mousewheel_recursive(self.income_container)

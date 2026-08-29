@@ -6,8 +6,16 @@ Purpose: Ingestion pipeline for processing, deduplicating, and auto-matching inc
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
+# Domain
+from source.domain.view_models import TransactionStreamViewState
+
+#Persistence
 from source.persistence.models import CategoryModel
 from source.persistence.repository import BudgetRepository
+
+#Services
+from source.services.mock_stream_generator import MockStreamGenerator
 
 
 class TransactionStreamService:
@@ -102,3 +110,53 @@ class TransactionStreamService:
                         return cat.id
 
         return None
+
+    # State Management
+
+    def track_transaction(self, tx_id: int, category_id: int):
+        """Assigns an envelope category and marks the transaction as tracked."""
+        self.repository.assign_transaction_category(tx_id, category_id)
+        self.repository.update_transaction_status(tx_id, "tracked")
+
+    def soft_delete_transaction(self, tx_id: int):
+        """Moves a transaction to the deleted tab without permanently removing it."""
+        self.repository.update_transaction_status(tx_id, "deleted")
+
+    def restore_transaction(self, tx_id: int):
+        """Restores a soft-deleted transaction back to active tracked status."""
+        self.repository.update_transaction_status(tx_id, "tracked")
+
+    def hard_delete_transaction(self, tx_id: int):
+        """Permanently removes a transaction from the database."""
+        self.repository.hard_delete_transaction(tx_id)
+
+
+    # Transaction Counter
+
+    def get_stream_view_state(self, budget_service, year: int, month: int, active_tab: str) -> TransactionStreamViewState:
+        """Aggregates all necessary data for the transaction panel into a single reusable view state."""
+        counts = budget_service.get_transaction_status_counts(year, month)
+        transactions = budget_service.get_transactions_by_status(year, month, status=active_tab)
+        
+        all_categories = self.repository.get_all_categories(include_archived=False)
+        
+        cat_id_to_name = {c.id: c.name for c in all_categories}
+        cat_name_to_id = {c.name: c.id for c in all_categories}
+        
+        return TransactionStreamViewState(
+            counts=counts,
+            transactions=transactions,
+            cat_id_to_name=cat_id_to_name,
+            cat_name_to_id=cat_name_to_id
+        )
+
+    #Bank Syncing (Currently a Simulation)
+
+    def simulate_sync(self, year: int, month: int, count: int = 4):
+        """Simulates a bank feed webhook payload and processes the batch."""
+        batch = MockStreamGenerator.generate_batch(
+            count=count,
+            year=year,
+            month=month
+        )
+        return self.ingest_payload(batch)
