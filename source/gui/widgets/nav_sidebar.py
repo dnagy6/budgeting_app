@@ -54,13 +54,14 @@ class NavSidebar(tk.Frame):
         self.tabs_frame.pack(fill=tk.X, padx=10, expand=True, anchor="n")
 
         self.tab_containers = {}
-        nav_items = [
+        self.nav_items = [
             ("budget", "Budget"),
+            ("transactions", "Transactions"),
             ("accounts", "Accounts"),
             ("insights", "Insights"),
         ]
 
-        for tab_id, label in nav_items:
+        for tab_id, label in self.nav_items:
             is_active = (tab_id == self.active_tab)
             
             # Container Frame for the tab

@@ -33,6 +33,8 @@ class BudgetApp:
         self.root.geometry(f"{AppConfig.WINDOW_WIDTH}x{AppConfig.WINDOW_HEIGHT}")
         self.root.minsize(AppConfig.MIN_WIDTH, AppConfig.MIN_HEIGHT)
 
+        self._subscribers = {"DATA_UPDATED": []}
+
         # Storage & State
         self.budgets = {}
         now = datetime.now()
@@ -44,6 +46,8 @@ class BudgetApp:
             self.current_budget = self.service.load_budget(self.current_year, self.current_month)
         else:
             self.current_budget = Budget(month=self.current_month, year=self.current_year)
+
+        self.subscribe("DATA_UPDATED", self.reload_and_refresh)
 
         # Build 3-Column Layout Frames
         self._build_layout_columns()
@@ -58,7 +62,7 @@ class BudgetApp:
         )
         self.header_view.pack(fill=tk.X)
 
-        self.summary_card = SummaryCard(self.center_frame)
+        self.summary_card = SummaryCard(self.right_frame)
         self.summary_card.pack(fill=tk.X, padx=20, pady=(0, 10))
 
         self.expense_card = ExpenseCard(self.center_frame)
@@ -71,13 +75,25 @@ class BudgetApp:
             on_rollover=self.close_month_and_rollover
         )
         self.footer_actions.pack(fill=tk.X, side=tk.BOTTOM)
-        self.create_right_rail_ui()
+        
 
         # Render view
         self.refresh_ui()
 
+    def subscribe(self, event_name: str, callback):
+        """Registers a UI component's refresh function to listen for a specific event."""
+        if event_name not in self._subscribers:
+            self._subscribers[event_name] = []
+        if callback not in self._subscribers[event_name]:
+            self._subscribers[event_name].append(callback)
+
+    def broadcast(self, event_name: str, *args, **kwargs):
+        """Silently triggers all listening functions when data changes."""
+        for callback in self._subscribers.get(event_name, []):
+            callback(*args, **kwargs)
+    
     def _build_layout_columns(self):
-        # Column 1: Left Navigation Rail (NavSidebar handles its own styling)
+        # Column 1: Left Navigation Rail
         self.nav_sidebar = NavSidebar(
             self.root,
             on_tab_change=self.on_nav_tab_changed,
@@ -85,13 +101,20 @@ class BudgetApp:
         )
         self.nav_sidebar.pack(side=tk.LEFT, fill=tk.Y)
 
-        # Column 2: Center Budget Canvas (Expandable)
-        self.center_frame = tk.Frame(self.root, bg=Theme.BG_CARD)
+        # Dynamic Content Area (Holds all tabs)
+        self.main_content_area = tk.Frame(self.root, bg=Theme.BG_CARD)
+        self.main_content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # --- TAB 1: Budget Container ---
+        self.budget_view_frame = tk.Frame(self.main_content_area, bg=Theme.BG_CARD)
+        
+        # Center Column: Budget
+        self.center_frame = tk.Frame(self.budget_view_frame, bg=Theme.BG_CARD)
         self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Column 3: Right Transaction Rail (Fixed width 350px)
+        # Right Column: EMPTY
         self.right_frame = tk.Frame(
-            self.root,
+            self.budget_view_frame,
             bg=Theme.BG_CARD,
             width=350,
             highlightthickness=1,
@@ -100,18 +123,21 @@ class BudgetApp:
         self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
         self.right_frame.pack_propagate(False)
 
-    def create_right_rail_ui(self):
-        """Mounts the full interactive TransactionPanel in the right rail."""
+        # --- TAB 2: Transactions Container ---
+        self.transactions_view_frame = tk.Frame(self.main_content_area, bg=Theme.BG_CARD)
         self.transaction_panel = TransactionPanel(
-            self.right_frame,
+            self.transactions_view_frame,
             service=self.service,
-            on_data_changed=self.reload_and_refresh
+            on_data_changed=lambda: self.broadcast("DATA_UPDATED")
         )
         self.transaction_panel.pack(fill=tk.BOTH, expand=True)
 
+        # Default TAB
+        self.active_tab = "budget"
+        self.budget_view_frame.pack(fill=tk.BOTH, expand=True)
+
     def open_add_group_dialog(self):
         """Creates a blank inline category group directly in the active budget view."""
-        # Check if an 'Untitled Group' already exists to avoid duplicate placeholders
         default_name = "New Group"
         counter = 1
         existing_names = {g.name for g in self.current_budget.groups}
@@ -119,16 +145,14 @@ class BudgetApp:
             default_name = f"New Group {counter}"
             counter += 1
 
-        # Save it immediately with a unique placeholder name tied to this specific group
         self.service.save_category(
             budget=self.current_budget,
-            name=f"{default_name} Envelope",  # <--- Unique name prevents collision/theft
+            name=f"{default_name} Envelope",
             category_type="expense",
             planned_amount=0.0,
             group_name=default_name
         )
         
-        # Reload and refresh so the new inline card appears on canvas ready for editing
         self.reload_and_refresh()
 
     def open_add_category_to_group(self, group_name: str, group_type: str):
@@ -138,15 +162,6 @@ class BudgetApp:
             on_success_callback=self.reload_and_refresh,
             default_group=group_name,
             default_type=group_type,
-            service=self.service
-        )
-
-    def open_edit_category(self, category: Category):
-        AddCategoryDialog(
-            self.root,
-            self.current_budget,
-            on_success_callback=self.reload_and_refresh,
-            existing_category=category,
             service=self.service
         )
 
@@ -313,7 +328,20 @@ class BudgetApp:
                 messagebox.showinfo("No Previous Budget", "No previous budget found to copy from.")
 
     def on_nav_tab_changed(self, tab_id: str):
-        pass
+        normalized_tab = tab_id.lower()
+        if normalized_tab == self.active_tab:
+            return
+        
+        self.budget_view_frame.pack_forget()
+        self.transactions_view_frame.pack_forget()
+
+        if normalized_tab == "budget":
+            self.budget_view_frame.pack(fill=tk.BOTH, expand=True)
+        elif normalized_tab == "transactions":
+            self.transactions_view_frame.pack(fill=tk.BOTH, expand=True)
+            self.transaction_panel.refresh() 
+        
+        self.active_tab = normalized_tab
 
     def on_profile_clicked(self):
         pass
