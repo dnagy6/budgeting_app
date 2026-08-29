@@ -192,18 +192,19 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
             return
 
         for tx in state.transactions:
-            TransactionCard(
+            card = TransactionCard(
                 self.stream_inner_frame,
                 tx=tx,
                 current_tab=self.current_tab,
                 cat_id_to_name=state.cat_id_to_name,
                 cat_name_to_id=state.cat_name_to_id,
                 on_track=self._handle_assign_and_track,
-                on_ignore=self._handle_soft_delete,
+                # on_ignore=self._handle_soft_delete,
                 on_delete=self._handle_soft_delete,
                 on_restore=self._handle_restore,
                 on_hard_delete=self._handle_hard_delete
             )
+            card.pack(fill=tk.X, pady=2, ipady=4)
 
     def _handle_simulate_sync(self):
         self.stream_service.simulate_sync(

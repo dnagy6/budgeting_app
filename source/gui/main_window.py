@@ -21,6 +21,7 @@ from source.gui.widgets.category_group_card import CategoryGroupCard
 from source.gui.widgets.month_picker import MonthPickerPopup
 from source.gui.widgets.nav_sidebar import NavSidebar
 from source.gui.widgets.transaction_panel import TransactionPanel
+from source.gui.widgets.transactions_minimap import TransactionsMinimap
 
 
 class BudgetApp:
@@ -118,7 +119,7 @@ class BudgetApp:
         self.center_frame = tk.Frame(self.budget_body_frame, bg=Theme.BG_CARD)
         self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Right Column: EMPTY
+        # Right Column: SUMMARY CARD
         self.right_frame = tk.Frame(
             self.budget_body_frame,
             bg=Theme.BG_CARD,
@@ -126,17 +127,21 @@ class BudgetApp:
             highlightthickness=1,
             highlightbackground=Theme.BORDER_SUBTLE
         )
-        self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 20), pady=(0, 20))
         self.right_frame.pack_propagate(False)
 
         # --- TAB 2: Transactions Container ---
         self.transactions_view_frame = tk.Frame(self.main_content_area, bg=Theme.BG_CARD)
+        
         self.transaction_panel = TransactionPanel(
             self.transactions_view_frame,
             service=self.service,
             on_data_changed=lambda: self.broadcast("DATA_UPDATED")
         )
-        self.transaction_panel.pack(fill=tk.BOTH, expand=True)
+        self.transaction_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.minimap = TransactionsMinimap(self.transactions_view_frame)
+        self.minimap.pack(side=tk.RIGHT, fill=tk.Y, padx=20, pady=(0, 20))
 
         # Default TAB
         self.active_tab = "budget"
@@ -390,3 +395,9 @@ class BudgetApp:
                 "on_rename_group": self.handle_inline_group_rename,
             }
         )
+        # Transaction Minimap stays in sync with budget changes
+        if hasattr(self, "minimap"):
+            self.minimap.refresh_data(
+                budget_groups=self.current_budget.groups, 
+                unallocated=unallocated
+            )
