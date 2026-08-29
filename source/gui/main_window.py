@@ -54,7 +54,7 @@ class BudgetApp:
 
         # Build UI Components
         self.header_view = HeaderView(
-            self.center_frame,
+            self.budget_header_frame,
             current_month=self.current_month,
             current_year=self.current_year,
             on_month_click=self.open_month_picker,
@@ -63,7 +63,7 @@ class BudgetApp:
         self.header_view.pack(fill=tk.X)
 
         self.summary_card = SummaryCard(self.right_frame)
-        self.summary_card.pack(fill=tk.X, padx=20, pady=(0, 10))
+        self.summary_card.pack(fill=tk.X, padx=16, pady=16)
 
         self.expense_card = ExpenseCard(self.center_frame)
         self.expense_card.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
@@ -107,14 +107,20 @@ class BudgetApp:
 
         # --- TAB 1: Budget Container ---
         self.budget_view_frame = tk.Frame(self.main_content_area, bg=Theme.BG_CARD)
+
+        self.budget_header_frame = tk.Frame(self.budget_view_frame, bg=Theme.BG_CARD)
+        self.budget_header_frame.pack(side=tk.TOP, fill=tk.X)
+
+        self.budget_body_frame = tk.Frame(self.budget_view_frame, bg=Theme.BG_CARD)
+        self.budget_body_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
-        # Center Column: Budget
-        self.center_frame = tk.Frame(self.budget_view_frame, bg=Theme.BG_CARD)
+        # Center Column: Budget 
+        self.center_frame = tk.Frame(self.budget_body_frame, bg=Theme.BG_CARD)
         self.center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # Right Column: EMPTY
         self.right_frame = tk.Frame(
-            self.budget_view_frame,
+            self.budget_body_frame,
             bg=Theme.BG_CARD,
             width=350,
             highlightthickness=1,

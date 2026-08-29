@@ -48,12 +48,24 @@ class HeaderView(tk.Frame):
         self.btn_month_selector.pack(side=tk.LEFT)
 
         # 2. Reset Budget Options Button
-        self.btn_reset_budget = ttk.Button(
-            self,
-            text="Reset Budget ▾",
-            command=self.on_reset_click
-        )
-        self.btn_reset_budget.pack(side=tk.RIGHT, padx=6)
+        if self.on_reset_click:
+            self.btn_reset_budget = tk.Button(
+                self,
+                text="Reset Budget",
+                font=Theme.FONT_LABEL,
+                fg=Theme.DANGER,
+                bg=Theme.BG_CARD,
+                activeforeground=Theme.DANGER,
+                activebackground=Theme.HOVER_BG,
+                relief=tk.SOLID,
+                bd=1,
+                highlightbackground=Theme.DANGER,
+                cursor="hand2",
+                padx=12,
+                pady=4,
+                command=self.on_reset_click
+            )
+            self.btn_reset_budget.pack(side=tk.RIGHT, padx=16)
 
     def update_header(self, month: int, year: int):
         """Updates the displayed month and year on the selector button."""
