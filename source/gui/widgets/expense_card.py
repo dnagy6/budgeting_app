@@ -15,53 +15,52 @@ class ExpenseCard(tk.Frame, ScrollableCanvasMixin):
         self._create_ui()
 
     def _create_ui(self):
-        # 1. Dedicated Fixed Income Container (Always at the top, never scrolls away)
-        self.income_container = tk.Frame(self, bg=Theme.BG_CARD)
-        self.income_container.pack(fill=tk.X, padx=20, pady=(0, 10))
+        # Single Scrollable Container for ALL Groups (Income + Expenses)
+        main_container = tk.Frame(self, bg=Theme.BG_CARD)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
-        # 2. Scrollable Container for Expense Groups Only
-        expense_container = tk.Frame(self, bg=Theme.BG_CARD)
-        expense_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
-
-        self.canvas = tk.Canvas(expense_container, bg=Theme.BG_CARD, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(expense_container, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.canvas = tk.Canvas(main_container, bg=Theme.BG_CARD, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(main_container, orient=tk.VERTICAL, command=self.canvas.yview)
         self.groups_inner_frame = tk.Frame(self.canvas, bg=Theme.BG_CARD)
 
         self._scroll_canvas_window = self.canvas.create_window((0, 0), window=self.groups_inner_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         # Initialize scrollable canvas mixin behaviors
-        self._init_scrollable_mixin(expense_container, self.canvas, self.groups_inner_frame)
+        self._init_scrollable_mixin(main_container, self.canvas, self.groups_inner_frame)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def render_groups(self, groups: list, callbacks: dict):
-        """Captures expansion states, clears old cards, separates income/expenses, and renders cards."""
+        """Captures expansion states, clears old cards, and renders all cards into the scroll space."""
         card_states = {}
-        for container in (self.income_container, self.groups_inner_frame):
-            for card in container.winfo_children():
-                if isinstance(card, CategoryGroupCard):
-                    card_states[card.group.name] = card.is_expanded
+        
+        
+        for card in self.groups_inner_frame.winfo_children():
+            if isinstance(card, CategoryGroupCard):
+                card_states[card.group.name] = card.is_expanded
 
-        for child in self.income_container.winfo_children():
-            child.destroy()
+        
         for child in self.groups_inner_frame.winfo_children():
             child.destroy()
 
+        
         income_groups = [g for g in groups if g.group_type == "income" or g.name.lower() == "income"]
         expense_groups = [g for g in groups if g.group_type != "income" and g.name.lower() != "income"]
 
+        
         for grp in income_groups:
             was_expanded = card_states.get(grp.name, True)
             card = CategoryGroupCard(
-                self.income_container,
+                self.groups_inner_frame,
                 group=grp,
                 initial_expanded=was_expanded,
                 **callbacks
             )
-            card.pack(fill=tk.X, expand=True)
+            card.pack(fill=tk.X, padx=4, pady=6)
 
+        
         if not expense_groups:
             lbl_empty = tk.Label(
                 self.groups_inner_frame,
@@ -82,5 +81,3 @@ class ExpenseCard(tk.Frame, ScrollableCanvasMixin):
                     **callbacks
                 )
                 card.pack(fill=tk.X, padx=4, pady=6)
-        # self._bind_mousewheel_recursive(self.groups_inner_frame)
-        # self._bind_mousewheel_recursive(self.income_container)
