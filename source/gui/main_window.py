@@ -15,7 +15,6 @@ from source.services.rollover_service import RolloverService
 # Widgets
 from source.gui.widgets.header_view import HeaderView
 from source.gui.widgets.summary_card import SummaryCard
-from source.gui.widgets.footer_actions import FooterActions
 from source.gui.widgets.expense_card import ExpenseCard
 from source.gui.widgets.category_group_card import CategoryGroupCard
 from source.gui.widgets.month_picker import MonthPickerPopup
@@ -59,23 +58,19 @@ class BudgetApp:
             current_month=self.current_month,
             current_year=self.current_year,
             on_month_click=self.open_month_picker,
+            on_prev_month=self.prev_month,
+            on_next_month=self.next_month,
+            on_today_click=self.go_to_today,
+            on_log_transaction=self.open_log_transaction_dialog,
             on_reset_click=self.show_reset_budget_options
         )
         self.header_view.pack(fill=tk.X)
 
         self.summary_card = SummaryCard(self.right_frame)
-        self.summary_card.pack(fill=tk.X, padx=16, pady=16)
+        self.summary_card.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
 
         self.expense_card = ExpenseCard(self.center_frame)
         self.expense_card.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
-
-        self.footer_actions = FooterActions(
-            self.center_frame,
-            on_add_group=self.open_add_group_dialog,
-            on_log_transaction=self.open_log_transaction_dialog,
-            on_rollover=self.close_month_and_rollover
-        )
-        self.footer_actions.pack(fill=tk.X, side=tk.BOTTOM)
         
 
         # Render view
@@ -274,6 +269,27 @@ class BudgetApp:
             self.current_month = self.current_budget.month
             self.refresh_ui()
 
+    def prev_month(self):
+        m = self.current_month - 1
+        y = self.current_year
+        if m < 1:
+            m = 12
+            y -= 1
+        self.change_budget_month(y, m)
+
+    def next_month(self):
+        m = self.current_month + 1
+        y = self.current_year
+        if m > 12:
+            m = 1
+            y += 1
+        self.change_budget_month(y, m)
+
+    def go_to_today(self):
+        now = datetime.now()
+        if self.current_year != now.year or self.current_month != now.month:
+            self.change_budget_month(now.year, now.month)
+
     def open_month_picker(self):
         MonthPickerPopup(
             parent_button=self.header_view.btn_month_selector,
@@ -360,9 +376,9 @@ class BudgetApp:
     def refresh_ui(self):
         self.header_view.update_header(self.current_month, self.current_year)
 
-        # 1. Calculate Income Received and Left to Budget (keeping your math intact)
-        total_income_received = sum(
-            cat.get_actual_amount()
+        # 1. Planned Totals for Zero-Based Allocation ("Left to Budget")
+        total_planned_income = sum(
+            cat.planned_amount
             for grp in self.current_budget.groups
             if grp.group_type == "income"
             for cat in grp.categories
@@ -375,9 +391,22 @@ class BudgetApp:
             for cat in grp.categories
         )
 
-        unallocated = total_income_received - total_allocated_expenses
+        unallocated = total_planned_income - total_allocated_expenses
 
-        self.summary_card.update_values(total_income_received, unallocated)
+        # 2. Actual Cash Flow Telemetry ("Income Received")
+        total_income_received = sum(
+            cat.get_actual_amount()
+            for grp in self.current_budget.groups
+            if grp.group_type == "income"
+            for cat in grp.categories
+        )
+
+        # Update the SummaryCard telemetry
+        self.summary_card.update_values(
+            income=total_income_received,
+            unallocated=unallocated,
+            groups=self.current_budget.groups
+        )
 
         if hasattr(self, "transaction_panel"):
             self.transaction_panel.set_period(self.current_year, self.current_month)
@@ -386,6 +415,7 @@ class BudgetApp:
         self.expense_card.render_groups(
             groups=self.current_budget.groups,
             callbacks={
+                "on_add_group": self.open_add_group_dialog,
                 "on_inline_save_category": self.handle_inline_category_save,
                 "on_add_category": self.open_add_category_to_group,
                 "on_inline_edit": self.handle_inline_category_edit,

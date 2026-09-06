@@ -30,8 +30,6 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
         super().__init__(
             parent,
             bg=Theme.BG_CARD,
-            highlightthickness=1,
-            highlightbackground=Theme.BORDER_SUBTLE,
             bd=0,
             **kwargs
         )
@@ -50,18 +48,19 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
 
     def _create_ui(self):
         # 1. Group Header Bar
-        self.header_frame = tk.Frame(self, bg=Theme.HOVER_BG, padx=12, pady=10)
+        header_bg = Theme.BG_HEADER
+        self.header_frame = tk.Frame(self, bg=header_bg, padx=16, pady=6)
         self.header_frame.pack(fill=tk.X)
 
-        controls_left = tk.Frame(self.header_frame, bg=Theme.HOVER_BG)
+        controls_left = tk.Frame(self.header_frame, bg=header_bg)
         controls_left.pack(side=tk.LEFT)
 
         if self.group.group_type != "income":
             self.lbl_grip = tk.Label(
                 controls_left,
-                text="⋮⋮",
+                text="⠇⠇",
                 font=Theme.FONT_TITLE,
-                bg=Theme.HOVER_BG,
+                bg=header_bg,
                 fg=Theme.TEXT_MUTED,
                 cursor="fleur"
             )
@@ -70,9 +69,9 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
 
         self.lbl_arrow = tk.Label(
             controls_left,
-            text="▾",
+            text="v",
             font=Theme.FONT_HEADER,
-            bg=Theme.HOVER_BG,
+            bg=header_bg,
             fg=Theme.TEXT_MUTED,
             cursor="hand2"
         )
@@ -83,57 +82,69 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
             controls_left,
             text=self.group.name,
             font=Theme.FONT_HEADER,
-            bg=Theme.HOVER_BG,
+            bg=header_bg,
             fg=Theme.TEXT_PRIMARY,
             cursor="xterm"
         )
         self.lbl_title.pack(side=tk.LEFT)
         self.lbl_title.bind("<Button-1>", lambda e: self._start_inline_group_name_edit())
 
+        # Summary Math
         total_planned = self.group.get_total_planned()
         total_actual = self.group.get_total_actual()
         actual_label = "Received" if self.group.group_type == "income" else "Spent"
-
         summary_text = f"Planned: ${total_planned:,.2f}  |  {actual_label}: ${total_actual:,.2f}"
+
+        # Right-Hand Header Elements
+        self.header_right_container = tk.Frame(self.header_frame, bg=header_bg)
+        self.header_right_container.pack(side=tk.RIGHT)
+
         self.lbl_summary = tk.Label(
-            self.header_frame,
+            self.header_right_container,
             text=summary_text,
             font=Theme.FONT_LABEL,
-            bg=Theme.HOVER_BG,
+            bg=header_bg,
             fg=Theme.TEXT_MUTED
         )
-        self.lbl_summary.pack(side=tk.RIGHT)
+
+        self.header_labels_frame = tk.Frame(self.header_right_container, bg=header_bg)
+        self.header_labels_frame.columnconfigure(0, minsize=120)
+        self.header_labels_frame.columnconfigure(1, minsize=120)
+        self.header_labels_frame.columnconfigure(2, minsize=120)
+        self.header_labels_frame.columnconfigure(3, minsize=40)
+
+        is_income = self.group.group_type == "income"
+        tk.Label(self.header_labels_frame, text="PLANNED" if is_income else "BUDGET", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=header_bg).grid(row=0, column=0, sticky="e", padx=(0, 10))
+        tk.Label(self.header_labels_frame, text="RECEIVED" if is_income else "SPENT", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=header_bg).grid(row=0, column=1, sticky="e", padx=(0, 18))
+        tk.Label(self.header_labels_frame, text="LEFTOVER", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=header_bg).grid(row=0, column=2, sticky="e", padx=(0, 18))
 
         # 2. Body Container
-        self.body_frame = tk.Frame(self, bg=Theme.BG_CARD, padx=16, pady=6)
-        self.body_frame.pack(fill=tk.X)
+        self.body_frame = tk.Frame(self, bg=Theme.BG_CARD, padx=16, pady=4)
 
         self._render_category_grid()
 
-        if not self.is_expanded:
-            self.lbl_arrow.config(text="▸")
+        if self.is_expanded:
+            self.lbl_arrow.config(text="v")
+            self.header_labels_frame.pack(side=tk.RIGHT)
+            self.body_frame.pack(fill=tk.X)
+        else:
+            self.lbl_arrow.config(text=">")
+            self.lbl_summary.pack(side=tk.RIGHT)
             self.body_frame.pack_forget()
 
     def _render_category_grid(self):
         for child in self.body_frame.winfo_children():
             child.destroy()
 
-        # Always create the grid table container so inline add rows have a home
         grid_table = tk.Frame(self.body_frame, bg=Theme.BG_CARD)
         grid_table.pack(fill=tk.X)
         self.grid_table = grid_table
 
         grid_table.columnconfigure(0, weight=1)
         grid_table.columnconfigure(1, minsize=120)
-        grid_table.columnconfigure(2, minsize=140)
+        grid_table.columnconfigure(2, minsize=120)
         grid_table.columnconfigure(3, minsize=120)
         grid_table.columnconfigure(4, minsize=40)
-
-        actual_header = "RECEIVED" if self.group.group_type == "income" else "SPENT"
-        tk.Label(grid_table, text="CATEGORY", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=0, sticky="w", pady=(0, 6))
-        tk.Label(grid_table, text="PLANNED", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=1, sticky="e", padx=(0, 10), pady=(0, 6))
-        tk.Label(grid_table, text=actual_header, font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=2, sticky="e", padx=(0, 10), pady=(0, 6))
-        tk.Label(grid_table, text="REMAINING", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=3, sticky="e", padx=(0, 10), pady=(0, 6))
 
         if not self.group.categories:
             lbl_empty = tk.Label(
@@ -143,66 +154,151 @@ class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
                 fg=Theme.TEXT_MUTED,
                 bg=Theme.BG_CARD
             )
-            lbl_empty.grid(row=1, column=0, columnspan=4, sticky="w", pady=8)
+            lbl_empty.grid(row=1, column=0, columnspan=5, sticky="w", pady=8)
             current_row = 2
         else:
             current_row = 1
             for cat in self.group.categories:
-                div = tk.Frame(grid_table, bg=Theme.HOVER_BG, height=1)
-                div.grid(row=current_row, column=0, columnspan=5, sticky="ew", pady=2)
+                # 1px Hairline Divider
+                div = tk.Frame(grid_table, bg=Theme.BORDER_HAIRLINE, height=1)
+                div.grid(row=current_row, column=0, columnspan=5, sticky="ew", pady=3)
                 current_row += 1
 
-                l_name = tk.Label(grid_table, text=cat.name, font=Theme.FONT_BODY, fg=Theme.TEXT_PRIMARY, bg=Theme.BG_CARD, cursor="xterm")
-                l_name.grid(row=current_row, column=0, sticky="w", pady=4)
+                # Column 0: Category Name
+                l_name = tk.Label(
+                    grid_table,
+                    text=cat.name,
+                    font=Theme.FONT_LABEL,
+                    fg=Theme.TEXT_PRIMARY,
+                    bg=Theme.BG_CARD,
+                    cursor="xterm"
+                )
+                l_name.grid(row=current_row, column=0, sticky="w", pady=3)
                 l_name.bind("<Button-1>", lambda e, c=cat, l=l_name: self._start_inline_name_edit(c, l, grid_table))
 
-                l_planned = tk.Label(grid_table, text=f"${cat.planned_amount:,.2f}", font=Theme.FONT_BODY, fg=Theme.ACCENT_PRIMARY, bg=Theme.BG_CARD, cursor="hand2")
-                l_planned.grid(row=current_row, column=1, sticky="e", padx=(0, 10), pady=4)
+                # Column 1: Planned (Input Bounding Box)
+                l_planned = tk.Label(
+                    grid_table,
+                    text=f"${cat.planned_amount:,.2f}",
+                    font=Theme.FONT_LABEL,
+                    fg=Theme.TEXT_PRIMARY,
+                    bg=Theme.INPUT_BG,
+                    highlightthickness=1,
+                    highlightbackground=Theme.INPUT_BORDER,
+                    padx=8,
+                    pady=2,
+                    cursor="hand2"
+                )
+                l_planned.grid(row=current_row, column=1, sticky="e", padx=(0, 10), pady=3)
                 l_planned.bind("<Button-1>", lambda e, c=cat, l=l_planned: self._start_inline_amount_edit(c, l, grid_table))
 
+                # Column 2: Actual / Spent
                 actual_val = cat.get_actual_amount()
-                tk.Label(grid_table, text=f"${actual_val:,.2f}", font=Theme.FONT_BODY, fg=Theme.TEXT_PRIMARY, bg=Theme.BG_CARD).grid(row=current_row, column=2, sticky="e", padx=(0, 10), pady=4)
+                l_actual = tk.Label(
+                    grid_table,
+                    text=f"${actual_val:,.2f}",
+                    font=Theme.FONT_LABEL,
+                    fg=Theme.TEXT_PRIMARY,
+                    bg=Theme.BG_CARD
+                )
+                l_actual.grid(row=current_row, column=2, sticky="e", padx=(0, 18), pady=3)
 
+                # Column 3: Remaining / Leftover (Status Pill)
                 rem_val = cat.get_remaining_amount()
                 if self.group.group_type == "income":
-                    rem_color = Theme.SUCCESS if actual_val >= cat.planned_amount else Theme.DANGER
+                    if actual_val >= cat.planned_amount and cat.planned_amount > 0:
+                        pill_bg, pill_fg = Theme.PILL_SUCCESS_BG, Theme.PILL_SUCCESS_TEXT
+                    else:
+                        pill_bg, pill_fg = Theme.PILL_NEUTRAL_BG, Theme.PILL_NEUTRAL_TEXT
                 else:
-                    rem_color = Theme.DANGER if rem_val < 0 else Theme.SUCCESS
+                    if rem_val > 0:
+                        pill_bg, pill_fg = Theme.PILL_SUCCESS_BG, Theme.PILL_SUCCESS_TEXT
+                    elif rem_val == 0:
+                        pill_bg, pill_fg = Theme.PILL_NEUTRAL_BG, Theme.PILL_NEUTRAL_TEXT
+                    else:
+                        pill_bg, pill_fg = Theme.PILL_DANGER_BG, Theme.PILL_DANGER_TEXT
 
-                tk.Label(grid_table, text=f"${rem_val:,.2f}", font=Theme.FONT_HEADER, fg=rem_color, bg=Theme.BG_CARD).grid(row=current_row, column=3, sticky="e", padx=(0, 10), pady=4)
+                rem_text = f"-${abs(rem_val):,.2f}" if rem_val < 0 else f"${rem_val:,.2f}"
 
-                btn_del = tk.Button(
-                    grid_table, text="✕", font=Theme.FONT_HEADER, fg=Theme.DANGER, bg=Theme.BG_CARD,
-                    relief=tk.FLAT, bd=0, cursor="hand2", command=lambda n=cat.name: self.on_delete_category(n)
+                lbl_pill = tk.Label(
+                    grid_table,
+                    text=rem_text,
+                    font=Theme.FONT_LABEL,
+                    fg=pill_fg,
+                    bg=pill_bg,
+                    padx=8,
+                    pady=2
+                )
+                lbl_pill.grid(row=current_row, column=3, sticky="e", padx=(0, 18), pady=3)
+
+                # Column 4: Delete Button (Clickable Label - no macOS native bezel)
+                btn_del = tk.Label(
+                    grid_table,
+                    text="✕",
+                    font=Theme.FONT_HEADER,
+                    fg=Theme.BG_CARD,  # Starts invisible by matching card bg
+                    bg=Theme.BG_CARD,
+                    cursor="hand2"
                 )
                 btn_del.grid(row=current_row, column=4, sticky="e", padx=(4, 0))
+                btn_del.bind("<Button-1>", lambda e, n=cat.name: self.on_delete_category(n))
+
+                # Hover-to-Reveal Wiring
+                def make_row_hover(b_del, widgets):
+                    def _enter(e):
+                        b_del.config(fg=Theme.DANGER)
+                    def _leave(e):
+                        b_del.config(fg=Theme.BG_CARD)
+
+                    for w in widgets:
+                        w.bind("<Enter>", _enter, add="+")
+                        w.bind("<Leave>", _leave, add="+")
+
+                make_row_hover(btn_del, [l_name, l_planned, l_actual, lbl_pill, btn_del])
 
                 current_row += 1
 
-        # Footer Action Bar
+        # Footer Action Bar: Flat Ghost Text Links (Clickable Labels)
         self.footer_frame = tk.Frame(self.body_frame, bg=Theme.BG_CARD)
-        self.footer_frame.pack(fill=tk.X, pady=(12, 4))
+        self.footer_frame.pack(fill=tk.X, pady=(6, 4))
 
         add_btn_text = "+ Add Income" if self.group.group_type == "income" else "+ Add Expense"
-        btn_add = ttk.Button(
-            self.footer_frame, text=add_btn_text, cursor="hand2",
-            command=self._toggle_inline_add_row
+        btn_add = tk.Label(
+            self.footer_frame,
+            text=add_btn_text,
+            font=Theme.FONT_LABEL,
+            fg=Theme.ACCENT_PRIMARY,
+            bg=Theme.BG_CARD,
+            cursor="hand2"
         )
-        btn_add.pack(side=tk.LEFT)
+        btn_add.pack(side=tk.LEFT, padx=0, pady=2)
+        btn_add.bind("<Button-1>", lambda e: self._toggle_inline_add_row())
+        btn_add.bind("<Enter>", lambda e: btn_add.config(fg=Theme.BRAND_HIGHLIGHT))
+        btn_add.bind("<Leave>", lambda e: btn_add.config(fg=Theme.ACCENT_PRIMARY))
 
         if self.group.group_type != "income":
-            btn_del_grp = tk.Button(
-                self.footer_frame, text="Delete Group", font=Theme.FONT_LABEL,
-                fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD, activeforeground=Theme.DANGER, activebackground=Theme.BG_CARD,
-                relief=tk.FLAT, bd=0, cursor="hand2", command=lambda: self.on_delete_group(self.group.name)
+            btn_del_grp = tk.Label(
+                self.footer_frame,
+                text="Delete Group",
+                font=Theme.FONT_LABEL,
+                fg=Theme.TEXT_MUTED,
+                bg=Theme.BG_CARD,
+                cursor="hand2"
             )
-            btn_del_grp.pack(side=tk.RIGHT)
+            btn_del_grp.pack(side=tk.RIGHT, padx=0, pady=2)
+            btn_del_grp.bind("<Button-1>", lambda e: self.on_delete_group(self.group.name))
+            btn_del_grp.bind("<Enter>", lambda e: btn_del_grp.config(fg=Theme.DANGER))
+            btn_del_grp.bind("<Leave>", lambda e: btn_del_grp.config(fg=Theme.TEXT_MUTED))
 
     def toggle_expand(self):
         self.is_expanded = not self.is_expanded
         if self.is_expanded:
-            self.lbl_arrow.config(text="▾")
+            self.lbl_arrow.config(text="v")
+            self.lbl_summary.pack_forget()
+            self.header_labels_frame.pack(side=tk.RIGHT)
             self.body_frame.pack(fill=tk.X)
         else:
-            self.lbl_arrow.config(text="▸")
+            self.lbl_arrow.config(text=">")
+            self.header_labels_frame.pack_forget()
+            self.lbl_summary.pack(side=tk.RIGHT)
             self.body_frame.pack_forget()

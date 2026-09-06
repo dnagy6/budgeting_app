@@ -19,7 +19,9 @@ class CardInlineEditMixin:
             fg=Theme.TEXT_PRIMARY,
             relief=tk.FLAT,
             highlightthickness=1,
-            highlightbackground=Theme.ACCENT_PRIMARY
+            highlightbackground=Theme.INPUT_BORDER,
+            highlightcolor =Theme.ACCENT_PRIMARY,
+            insertbackground=Theme.TEXT_PRIMARY
         )
         entry.insert(0, old_name)
         entry.select_range(0, tk.END)
@@ -56,7 +58,9 @@ class CardInlineEditMixin:
             fg=Theme.TEXT_PRIMARY,
             relief=tk.FLAT,
             highlightthickness=1,
-            highlightbackground=Theme.ACCENT_PRIMARY
+            highlightbackground=Theme.INPUT_BORDER,
+            highlightcolor=Theme.ACCENT_PRIMARY,
+            insertbackground=Theme.TEXT_PRIMARY
         )
         entry.insert(0, cat.name)
         entry.select_range(0, tk.END)
@@ -124,7 +128,7 @@ class CardInlineEditMixin:
         entry.bind("<Escape>", cancel)
 
     def _toggle_inline_add_row(self):
-        # If the group has no categories yet, render the table structure first so grid_table exists
+        # If the group has no categories yet, ensure grid_table exists
         if not self.group.categories:
             self._render_category_grid()
 
@@ -135,45 +139,75 @@ class CardInlineEditMixin:
         if hasattr(self, "ent_name") and self.ent_name.winfo_exists():
             return
 
+        # Clear the "No envelopes..." placeholder label if present to avoid overlap
+        for child in self.grid_table.winfo_children():
+            if isinstance(child, tk.Label) and "No envelopes" in child.cget("text"):
+                child.destroy()
+
         row_idx = len(self.group.categories) * 2 + 1
 
         # Subtle divider above the input row
-        self.inline_div = tk.Frame(self.grid_table, bg=Theme.BORDER_SUBTLE, height=1)
-        self.inline_div.grid(row=row_idx, column=0, columnspan=5, sticky="ew", pady=2)
+        self.inline_div = tk.Frame(self.grid_table, bg=Theme.BORDER_HAIRLINE, height=1)
+        self.inline_div.grid(row=row_idx, column=0, columnspan=5, sticky="ew", pady=3)
         row_idx += 1
 
-        # Name Entry gridded directly into Column 0 (Category Name)
+        # 1. Category Name Entry with Muted Placeholder & Visible Caret
         self.ent_name = tk.Entry(
             self.grid_table,
             font=Theme.FONT_BODY,
-            bg=Theme.BG_CARD,
-            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.INPUT_BG,
+            fg=Theme.TEXT_MUTED,
             relief=tk.FLAT,
             highlightthickness=1,
-            highlightbackground=Theme.ACCENT_PRIMARY
+            highlightbackground=Theme.INPUT_BORDER,
+            highlightcolor=Theme.ACCENT_PRIMARY,
+            insertbackground=Theme.TEXT_PRIMARY,
+            insertwidth=2
         )
-        self.ent_name.grid(row=row_idx, column=0, sticky="ew", pady=4)
-        self.ent_name.focus_set()
+        self.ent_name.grid(row=row_idx, column=0, sticky="ew", pady=3)
 
-        # Planned Amount Entry gridded directly into Column 1 (Planned)
+        placeholder = "Category name..."
+        self.ent_name.insert(0, placeholder)
+
+        def on_name_focus_in(e):
+            if self.ent_name.get() == placeholder:
+                self.ent_name.delete(0, tk.END)
+                self.ent_name.config(fg=Theme.TEXT_PRIMARY)
+
+        def on_name_focus_out(e):
+            if not self.ent_name.get().strip():
+                self.ent_name.insert(0, placeholder)
+                self.ent_name.config(fg=Theme.TEXT_MUTED)
+
+        self.ent_name.bind("<FocusIn>", on_name_focus_in)
+        self.ent_name.bind("<FocusOut>", on_name_focus_out)
+
+        # 2. Planned Amount Entry with Matching Focus Styles & Caret
         self.ent_amount = tk.Entry(
             self.grid_table,
             font=Theme.FONT_BODY,
-            bg=Theme.BG_CARD,
+            bg=Theme.INPUT_BG,
             fg=Theme.TEXT_PRIMARY,
             relief=tk.FLAT,
             highlightthickness=1,
-            highlightbackground=Theme.BORDER_SUBTLE,
+            highlightbackground=Theme.INPUT_BORDER,
+            highlightcolor=Theme.ACCENT_PRIMARY,
+            insertbackground=Theme.TEXT_PRIMARY,
+            insertwidth=2,
             width=10,
             justify="right"
         )
-        self.ent_amount.grid(row=row_idx, column=1, sticky="e", padx=(0, 10), pady=4)
+        self.ent_amount.grid(row=row_idx, column=1, sticky="e", padx=(0, 10), pady=3)
         self.ent_amount.insert(0, "0.00")
 
-        # Smooth Keyboard Navigation: Enter on name moves to amount; Enter on amount saves.
+        def on_amount_focus_in(e):
+            self.ent_amount.select_range(0, tk.END)
+
+        self.ent_amount.bind("<FocusIn>", on_amount_focus_in)
+
+        # Keyboard Navigation: Enter on name moves to amount; Enter on amount commits
         def focus_amount(event):
             self.ent_amount.focus_set()
-            self.ent_amount.select_range(0, tk.END)
             return "break"
 
         def commit(event=None):
@@ -187,19 +221,25 @@ class CardInlineEditMixin:
         self.ent_amount.bind("<Return>", commit)
         self.ent_amount.bind("<Escape>", cancel)
 
+        self.ent_name.focus_set()
+
     def _remove_inline_row(self):
         for attr in ("ent_name", "ent_amount", "inline_div"):
             if hasattr(self, attr) and getattr(self, attr).winfo_exists():
                 getattr(self, attr).destroy()
 
+        if not self.group.categories:
+            self._render_category_grid()
+
     def _commit_inline_item(self):
-        name = self.ent_name.get().strip() if hasattr(self, "ent_name") else ""
+        raw_name = self.ent_name.get().strip() if hasattr(self, "ent_name") else ""
         raw_amount = self.ent_amount.get().strip() if hasattr(self, "ent_amount") else "0.00"
 
-        self._remove_inline_row()
-
-        if not name:
+        if raw_name in ("", "Category name..."):
+            self._remove_inline_row()
             return
+
+        self._remove_inline_row()
 
         try:
             amount = float(raw_amount)
@@ -209,7 +249,7 @@ class CardInlineEditMixin:
         if hasattr(self, "on_inline_save_category") and self.on_inline_save_category:
             self.on_inline_save_category(
                 group_name=self.group.name,
-                category_name=name,
+                category_name=raw_name,
                 planned_amount=amount,
                 category_type=self.group.group_type
             )
