@@ -81,60 +81,112 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
         ]
 
         for col_idx, (tab_id, label) in enumerate(tabs):
-            btn = tk.Button(
+            btn = tk.Label(
                 self.tabs_bar,
                 text=label,
                 font=Theme.FONT_LABEL,
                 fg=Theme.TEXT_MUTED,
                 bg=Theme.HOVER_BG,
-                activebackground=Theme.BG_CARD,
-                relief=tk.FLAT,
-                bd=0,
-                padx=2,
-                pady=4,
                 cursor="hand2",
-                command=lambda t=tab_id: self.switch_tab(t)
+                padx=8,
+                pady=4
             )
             btn.grid(row=0, column=col_idx, sticky="nsew", padx=1)
+            btn.bind("<Button-1>", lambda e, t=tab_id: self.switch_tab(t))
             self.tab_buttons[tab_id] = btn
 
     def _create_scrollable_stream(self):
-        self.container = tk.Frame(self, bg=Theme.BG_CARD)
-        self.container.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
+        # 1. Stream Column Header Labels (Balances the table structure)
+        self.stream_headers = tk.Frame(self, bg=Theme.BG_CARD, padx=12, pady=6)
+        self.stream_headers.pack(fill=tk.X)
 
-        self.canvas = tk.Canvas(self.container, bg=Theme.BG_CARD, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(self.container, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.stream_headers.columnconfigure(0, minsize=40, weight=0)
+        self.stream_headers.columnconfigure(1, weight=1)
+        self.stream_headers.columnconfigure(2, minsize=210, weight=0)
+        self.stream_headers.columnconfigure(3, minsize=110, weight=0)
+        self.stream_headers.columnconfigure(4, minsize=70, weight=0)
+
+        tk.Label(self.stream_headers, text="", bg=Theme.BG_CARD).grid(row=0, column=0)
+        tk.Label(self.stream_headers, text="MERCHANT / DATE", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=1, sticky="w", padx=(6, 0))
+        tk.Label(self.stream_headers, text="CATEGORY", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=2, sticky="w")
+        tk.Label(self.stream_headers, text="AMOUNT", font=Theme.FONT_LABEL, fg=Theme.TEXT_MUTED, bg=Theme.BG_CARD).grid(row=0, column=3, sticky="e", padx=(0, 16))
+
+        # Divider under headers
+        hdr_div = tk.Frame(self.stream_headers, bg=Theme.BORDER_HAIRLINE, height=1)
+        hdr_div.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(4, 0))
+
+        # 2. Scrollable Canvas
+        self.container = tk.Frame(self, bg=Theme.BG_CARD)
+        self.container.pack(fill=tk.BOTH, expand=True, padx=12, pady=0)
+
+        self.canvas = tk.Canvas(self.container, bg=Theme.BG_CARD, highlightthickness=0, bd=0)
+        
+        # Borderless scrollbar matching card background
+        self.scrollbar = tk.Scrollbar(
+            self.container,
+            orient=tk.VERTICAL,
+            command=self.canvas.yview,
+            bg=Theme.BORDER_SUBTLE,
+            troughcolor=Theme.BG_CARD,
+            activebackground=Theme.TEXT_MUTED,
+            bd=0,
+            highlightthickness=0,
+            relief=tk.FLAT,
+            width=8
+        )
         self.stream_inner_frame = tk.Frame(self.canvas, bg=Theme.BG_CARD)
 
         self._scroll_canvas_window = self.canvas.create_window((0, 0), window=self.stream_inner_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # Initialize mixin bindings
         self._init_scrollable_mixin(self.container, self.canvas, self.stream_inner_frame)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _create_footer_ui(self):
-        footer = tk.Frame(self, bg=Theme.BG_CARD, padx=16, pady=10, highlightthickness=1, highlightbackground=Theme.HOVER_BG)
-        footer.pack(fill=tk.X, side=tk.BOTTOM)
-
-        btn_sync = tk.Button(
-            footer,
-            text="⚡ Sync Bank Feed",
-            font=Theme.FONT_HEADER,
-            fg=Theme.ACCENT_PRIMARY,
-            bg=Theme.ACCENT_POWDER,
-            activeforeground=Theme.BRAND_HIGHLIGHT,
-            activebackground=Theme.ACCENT_POWDER,
-            relief=tk.FLAT,
-            bd=0,
-            padx=8,
-            pady=7,
-            cursor="hand2",
-            command=self._handle_simulate_sync
+        footer = tk.Frame(
+            self,
+            bg=Theme.BG_CARD,
+            padx=16,
+            pady=10,
+            highlightthickness=1,
+            highlightbackground=Theme.HOVER_BG
         )
-        btn_sync.pack(fill=tk.X)
+        footer.pack(fill=tk.X, side=tk.BOTTOM)
+        self.footer = footer
+
+        # 1. Primary Action: Track Selected
+        self.btn_track_selected = tk.Label(
+            footer,
+            text="Track Selected",
+            font=Theme.FONT_LABEL,
+            fg="#ffffff",
+            bg=Theme.ACCENT_PRIMARY,
+            cursor="hand2",
+            padx=14,
+            pady=7
+        )
+        self.btn_track_selected.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+        self.btn_track_selected.bind("<Button-1>", lambda e: self._handle_bulk_track())
+        self.btn_track_selected.bind("<Enter>", lambda e: self.btn_track_selected.config(bg=Theme.BRAND_HIGHLIGHT))
+        self.btn_track_selected.bind("<Leave>", lambda e: self.btn_track_selected.config(bg=Theme.ACCENT_PRIMARY))
+
+        # 2. Secondary Action: Sync Bank Feed
+        self.btn_sync = tk.Label(
+            footer,
+            text="↻ Sync Bank Feed",
+            font=Theme.FONT_LABEL,
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.HOVER_BG,
+            cursor="hand2",
+            padx=14,
+            pady=7
+        )
+        self.btn_sync.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(6, 0))
+        self.btn_sync.bind("<Button-1>", lambda e: self._handle_simulate_sync())
+        self.btn_sync.bind("<Enter>", lambda e: self.btn_sync.config(bg=Theme.BORDER_SUBTLE))
+        self.btn_sync.bind("<Leave>", lambda e: self.btn_sync.config(bg=Theme.HOVER_BG))
 
     def switch_tab(self, tab_id: str):
         self.current_tab = tab_id
@@ -161,23 +213,30 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
                     bg=Theme.BG_CARD,
                     fg=Theme.TEXT_PRIMARY,
                     font=Theme.FONT_HEADER,
-                    relief=tk.SOLID,
-                    bd=1,
+                    highlightthickness=1,
                     highlightbackground=Theme.BORDER_SUBTLE
-                )
+            )
             else:
                 btn.config(
                     text=btn_text,
                     bg=Theme.HOVER_BG,
                     fg=Theme.TEXT_MUTED,
                     font=Theme.FONT_LABEL,
-                    relief=tk.FLAT,
-                    bd=0
-                )
+                    highlightthickness=0
+            )
+
+        if self.current_tab == "new":
+            self.btn_track_selected.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+            self.btn_sync.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(6, 0))
+        else:
+            self.btn_track_selected.pack_forget()
+            self.btn_sync.pack(fill=tk.X, expand=True)
 
         for child in self.stream_inner_frame.winfo_children():
             child.destroy()
         self.canvas.yview_moveto(0.0)
+
+        self.card_instances = []
 
         if not state.transactions:
             lbl_empty = tk.Label(
@@ -204,7 +263,7 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
                 on_restore=self._handle_restore,
                 on_hard_delete=self._handle_hard_delete
             )
-            card.pack(fill=tk.X, pady=2, ipady=4)
+            card.pack(fill=tk.X, pady=0)
 
     def _handle_simulate_sync(self):
         self.stream_service.simulate_sync(
@@ -228,6 +287,65 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
         self.stream_service.track_transaction(tx_id, cat_id)
         self.refresh()
         self.on_data_changed()
+
+    def _handle_bulk_track(self):
+        """Processes all checked cards in bulk with explicit user feedback."""
+        top = self.winfo_toplevel()
+
+        # 1. Directly collect all TransactionCard instances currently rendered
+        cards = [
+            child for child in self.stream_inner_frame.winfo_children()
+            if isinstance(child, TransactionCard)
+        ]
+
+        # 2. Filter to checked cards
+        checked_cards = [card for card in cards if card.is_checked()]
+
+        if not checked_cards:
+            messagebox.showwarning(
+                "No Transactions Selected",
+                "Please check the box next to at least one transaction before clicking 'Track Selected'.",
+                parent=top
+            )
+            return
+
+        # 3. Separate cards into trackable vs. unassigned
+        to_track = []
+        unassigned_count = 0
+
+        for card in checked_cards:
+            selected_cat = card.cat_var.get().strip()
+            cat_id = card.cat_name_to_id.get(selected_cat)
+
+            if not selected_cat or selected_cat == "Select Category" or cat_id is None:
+                unassigned_count += 1
+            else:
+                to_track.append((card.tx.id, cat_id))
+
+        # 4. If all selected cards lack categories, warn the user
+        if not to_track:
+            messagebox.showwarning(
+                "Select Category",
+                "Please choose an envelope category for the selected transactions before tracking.",
+                parent=top
+            )
+            return
+
+        # 5. Track all valid selections
+        for tx_id, cat_id in to_track:
+            self.stream_service.track_transaction(tx_id, cat_id)
+
+        # 6. Refresh panel and broadcast data changes to the budget view
+        self.refresh()
+        self.on_data_changed()
+
+        # If any selected items were skipped due to missing categories, alert the user
+        if unassigned_count > 0:
+            messagebox.showinfo(
+                "Partial Track",
+                f"Tracked {len(to_track)} transaction(s).\n{unassigned_count} transaction(s) were skipped because no category was assigned.",
+                parent=top
+            )
 
     def _handle_soft_delete(self, tx_id: int):
         self.stream_service.soft_delete_transaction(tx_id)
