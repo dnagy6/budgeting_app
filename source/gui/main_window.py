@@ -141,6 +141,12 @@ class BudgetApp:
         self.minimap = TransactionsMinimap(self.transactions_view_frame)
         self.minimap.pack(side=tk.RIGHT, fill=tk.Y, padx=20, pady=(0, 20))
 
+        # --- TAB 3: Accounts Container ---
+        self.accounts_view = AccountsView(
+            self.main_content_area,
+            on_accounts_updated=lambda: self.broadcast("DATA_UPDATED")
+        )
+
         # Default TAB
         self.active_tab = "budget"
         self.budget_view_frame.pack(fill=tk.BOTH, expand=True)
@@ -255,6 +261,8 @@ class BudgetApp:
 
     def reload_and_refresh(self):
         self.current_budget = self.service.load_budget(self.current_year, self.current_month)
+        if hasattr(self, "accounts_view") and self.active_tab == "accounts":
+            self.accounts_view.refresh()
         self.refresh_ui()
 
     def close_month_and_rollover(self):
@@ -369,7 +377,10 @@ class BudgetApp:
             self.budget_view_frame.pack(fill=tk.BOTH, expand=True)
         elif normalized_tab == "transactions":
             self.transactions_view_frame.pack(fill=tk.BOTH, expand=True)
-            self.transaction_panel.refresh() 
+            self.transaction_panel.refresh()
+        elif normalized_tab == "accounts":
+            self.accounts_view.pack(fill=tk.BOTH, expand=True)
+            self.accounts_view.refresh()
         
         self.active_tab = normalized_tab
 

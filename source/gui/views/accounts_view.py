@@ -17,7 +17,7 @@ from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
 
 class AccountsView(tk.Frame, ScrollableCanvasMixin):
     def __init__(self, parent, on_accounts_updated=None, **kwargs):
-        super().__init__(parent, bg=Theme.BG_APP, **kwargs)
+        super().__init__(parent, bg=Theme.BG_CARD, **kwargs)
         self.on_accounts_updated = on_accounts_updated
         self.plaid_service = PlaidService()
         self.is_connecting = False
@@ -28,11 +28,11 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         self.refresh()
 
     def _create_header_ui(self):
-        header_frame = tk.Frame(self, bg=Theme.BG_APP, padx=24, pady=16)
+        header_frame = tk.Frame(self, bg=Theme.BG_CARD, padx=24, pady=16)
         header_frame.pack(fill=tk.X)
 
         # Title & Subtitle
-        title_group = tk.Frame(header_frame, bg=Theme.BG_APP)
+        title_group = tk.Frame(header_frame, bg=Theme.BG_CARD)
         title_group.pack(side=tk.LEFT)
 
         tk.Label(
@@ -40,7 +40,7 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             text="Accounts",
             font=Theme.FONT_LARGE_TITLE,
             fg=Theme.TEXT_PRIMARY,
-            bg=Theme.BG_APP
+            bg=Theme.BG_CARD
         ).pack(anchor="w")
 
         tk.Label(
@@ -48,7 +48,7 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             text="Manage connected bank feeds and view balances",
             font=Theme.FONT_LABEL,
             fg=Theme.TEXT_MUTED,
-            bg=Theme.BG_APP
+            bg=Theme.BG_CARD
         ).pack(anchor="w")
 
         # Action: + Link Bank Account Button (Dark-mode safe tk.Label)
@@ -69,10 +69,10 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
 
     def _create_metrics_ui(self):
         """Top telemetry bar displaying aggregate financial totals."""
-        metrics_container = tk.Frame(self, bg=Theme.BG_APP, padx=24, pady=0)
+        metrics_container = tk.Frame(self, bg=Theme.BG_CARD, padx=24, pady=0)
         metrics_container.pack(fill=tk.X)
 
-        self.cards_frame = tk.Frame(metrics_container, bg=Theme.BG_APP)
+        self.cards_frame = tk.Frame(metrics_container, bg=Theme.BG_CARD)
         self.cards_frame.pack(fill=tk.X)
         self.cards_frame.columnconfigure(0, weight=1)
         self.cards_frame.columnconfigure(1, weight=1)
@@ -99,21 +99,21 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         return lbl_val
 
     def _create_scrollable_area(self):
-        self.container = tk.Frame(self, bg=Theme.BG_APP)
+        self.container = tk.Frame(self, bg=Theme.BG_CARD)
         self.container.pack(fill=tk.BOTH, expand=True, padx=24, pady=(16, 24))
 
-        self.canvas = tk.Canvas(self.container, bg=Theme.BG_APP, highlightthickness=0, bd=0)
+        self.canvas = tk.Canvas(self.container, bg=Theme.BG_CARD, highlightthickness=0, bd=0)
         self.scrollbar = tk.Scrollbar(
             self.container,
             orient=tk.VERTICAL,
             command=self.canvas.yview,
             bg=Theme.BORDER_SUBTLE,
-            troughcolor=Theme.BG_APP,
+            troughcolor=Theme.BG_CARD,
             bd=0,
             highlightthickness=0,
             width=8
         )
-        self.inner_frame = tk.Frame(self.canvas, bg=Theme.BG_APP)
+        self.inner_frame = tk.Frame(self.canvas, bg=Theme.BG_CARD)
 
         self._scroll_canvas_window = self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
