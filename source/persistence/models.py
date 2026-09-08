@@ -3,6 +3,8 @@ from datetime import date
 from typing import Optional, List
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.sql import func
 from source.persistence.database import Base
 
 class CategoryGroupModel(Base):
@@ -72,3 +74,30 @@ class MonthlyGroupStateModel(Base):
     __table_args__ = (
         UniqueConstraint("group_id", "year", "month", name="uq_group_month_state"),
     )
+
+class PlaidItemModel(Base):
+    __tablename__ = "plaid_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String, unique=True, nullable=False)
+    access_token = Column(String, nullable=False)
+    institution_id = Column(String, nullable=True)
+    institution_name = Column(String, nullable=True)
+    status = Column(String, default="active")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PlaidAccountModel(Base):
+    __tablename__ = "plaid_accounts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String, ForeignKey("plaid_items.item_id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+    official_name = Column(String, nullable=True)
+    mask = Column(String, nullable=True)
+    type = Column(String, nullable=True)
+    subtype = Column(String, nullable=True)
+    current_balance = Column(Float, default=0.0)
+    available_balance = Column(Float, default=0.0)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
