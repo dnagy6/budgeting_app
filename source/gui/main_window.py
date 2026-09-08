@@ -15,12 +15,15 @@ from source.services.rollover_service import RolloverService
 # Widgets
 from source.gui.widgets.header_view import HeaderView
 from source.gui.widgets.summary_card import SummaryCard
-from source.gui.widgets.expense_card import ExpenseCard
+from source.gui.views.budget_view import ExpenseCard
 from source.gui.widgets.category_group_card import CategoryGroupCard
 from source.gui.widgets.month_picker import MonthPickerPopup
 from source.gui.widgets.nav_sidebar import NavSidebar
-from source.gui.widgets.transaction_panel import TransactionPanel
 from source.gui.widgets.transactions_minimap import TransactionsMinimap
+
+# Tabs/ views
+from source.gui.views.transactions_view import TransactionPanel
+from source.gui.views.accounts_view import AccountsView
 
 
 class BudgetApp:
