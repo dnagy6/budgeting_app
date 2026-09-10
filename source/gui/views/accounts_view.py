@@ -1,6 +1,6 @@
 """
 File: source/gui/views/accounts_view.py
-Purpose: Displays connected bank institutions, live balances, and manages Plaid Link connections.
+Purpose: Displays connected bank institutions, live balances, and provides Link and Sync triggers.
 """
 
 import threading
@@ -21,6 +21,7 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         self.on_accounts_updated = on_accounts_updated
         self.plaid_service = PlaidService()
         self.is_connecting = False
+        self.is_syncing = False
 
         self._create_header_ui()
         self._create_metrics_ui()
@@ -51,9 +52,31 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             bg=Theme.BG_CARD
         ).pack(anchor="w")
 
-        # Action: + Link Bank Account Button (Dark-mode safe tk.Label)
+        # Right Action Buttons Container
+        actions_group = tk.Frame(header_frame, bg=Theme.BG_CARD)
+        actions_group.pack(side=tk.RIGHT)
+
+        # 1. ↻ Sync All Feeds Button
+        self.btn_sync = tk.Label(
+            actions_group,
+            text="↻ Sync Feeds",
+            font=Theme.FONT_HEADER,
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.BG_CARD,
+            cursor="hand2",
+            padx=14,
+            pady=8,
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER_SUBTLE
+        )
+        self.btn_sync.pack(side=tk.LEFT, padx=(0, 10))
+        self.btn_sync.bind("<Button-1>", lambda e: self._start_plaid_sync())
+        self.btn_sync.bind("<Enter>", lambda e: self.btn_sync.config(bg=Theme.HOVER_BG) if not self.is_syncing else None)
+        self.btn_sync.bind("<Leave>", lambda e: self.btn_sync.config(bg=Theme.BG_CARD) if not self.is_syncing else None)
+
+        # 2. + Link Bank Account Button
         self.btn_link = tk.Label(
-            header_frame,
+            actions_group,
             text="+ Link Bank Account",
             font=Theme.FONT_HEADER,
             fg="#ffffff",
@@ -62,13 +85,12 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             padx=16,
             pady=8
         )
-        self.btn_link.pack(side=tk.RIGHT)
+        self.btn_link.pack(side=tk.LEFT)
         self.btn_link.bind("<Button-1>", lambda e: self._start_plaid_link())
         self.btn_link.bind("<Enter>", lambda e: self.btn_link.config(bg=Theme.BRAND_HIGHLIGHT) if not self.is_connecting else None)
         self.btn_link.bind("<Leave>", lambda e: self.btn_link.config(bg=Theme.ACCENT_PRIMARY) if not self.is_connecting else None)
 
     def _create_metrics_ui(self):
-        """Top telemetry bar displaying aggregate financial totals."""
         metrics_container = tk.Frame(self, bg=Theme.BG_CARD, padx=24, pady=0)
         metrics_container.pack(fill=tk.X)
 
@@ -124,7 +146,7 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def refresh(self):
-        """Reloads all institutions and accounts from the SQLite database."""
+        """Reloads all institutions and accounts from SQLite and resets scroll position."""
         for child in self.inner_frame.winfo_children():
             child.destroy()
 
@@ -132,12 +154,10 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             items = session.query(PlaidItemModel).all()
             accounts = session.query(PlaidAccountModel).all()
 
-            # Group accounts by item_id
             grouped_accounts = {}
             for acc in accounts:
                 grouped_accounts.setdefault(acc.item_id, []).append(acc)
 
-            # Compute metric summaries
             liquid_cash = 0.0
             credit_debt = 0.0
 
@@ -153,7 +173,6 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
 
             net_balance = liquid_cash - credit_debt
 
-            # Update metrics cards
             self.lbl_cash.config(text=f"${liquid_cash:,.2f}")
             self.lbl_debt.config(text=f"${credit_debt:,.2f}")
             net_color = Theme.SUCCESS if net_balance >= 0 else Theme.DANGER
@@ -161,11 +180,13 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
 
             if not items:
                 self._render_empty_state()
-                return
+            else:
+                for item in items:
+                    item_accs = grouped_accounts.get(item.item_id, [])
+                    self._render_institution_card(item, item_accs)
 
-            for item in items:
-                item_accs = grouped_accounts.get(item.item_id, [])
-                self._render_institution_card(item, item_accs)
+        # Reset canvas viewport to top
+        self.canvas.yview_moveto(0.0)
 
     def _render_empty_state(self):
         empty_card = tk.Frame(
@@ -216,18 +237,34 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             bg=Theme.BG_CARD
         ).pack(side=tk.LEFT)
 
-        # Status pill
+        # Right actions on institution card
+        right_actions = tk.Frame(inst_header, bg=Theme.BG_CARD)
+        right_actions.pack(side=tk.RIGHT)
+
+        btn_item_sync = tk.Label(
+            right_actions,
+            text="↻ Sync",
+            font=Theme.FONT_LABEL,
+            fg=Theme.TEXT_MUTED,
+            bg=Theme.BG_CARD,
+            cursor="hand2",
+            padx=6
+        )
+        btn_item_sync.pack(side=tk.LEFT, padx=(0, 12))
+        btn_item_sync.bind("<Button-1>", lambda e, i_id=item.item_id: self._start_single_sync(i_id))
+        btn_item_sync.bind("<Enter>", lambda e, b=btn_item_sync: b.config(fg=Theme.TEXT_PRIMARY))
+        btn_item_sync.bind("<Leave>", lambda e, b=btn_item_sync: b.config(fg=Theme.TEXT_MUTED))
+
         status_pill = tk.Label(
-            inst_header,
+            right_actions,
             text="● Active",
             font=Theme.FONT_LABEL,
             fg=Theme.SUCCESS,
             bg=Theme.BG_CARD,
-            padx=8
+            padx=4
         )
-        status_pill.pack(side=tk.RIGHT)
+        status_pill.pack(side=tk.LEFT)
 
-        # Hairline separator beneath institution title
         tk.Frame(card, bg=Theme.BORDER_HAIRLINE, height=1).pack(fill=tk.X)
 
         # Account Rows
@@ -235,7 +272,6 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             row = tk.Frame(card, bg=Theme.BG_CARD, padx=16, pady=10)
             row.pack(fill=tk.X)
 
-            # Left: Name & Mask
             left_col = tk.Frame(row, bg=Theme.BG_CARD)
             left_col.pack(side=tk.LEFT)
 
@@ -256,7 +292,6 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
                 bg=Theme.BG_CARD
             ).pack(anchor="w")
 
-            # Center/Right: Type Badge
             type_label = (acc.subtype or acc.type or "other").upper()
             badge = tk.Label(
                 row,
@@ -269,7 +304,6 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
             )
             badge.pack(side=tk.LEFT, padx=(24, 0))
 
-            # Right: Balance
             bal = float(acc.current_balance or 0.0)
             acc_type = (acc.type or "").lower()
             is_liability = acc_type in ("credit", "loan")
@@ -285,11 +319,66 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
                 bg=Theme.BG_CARD
             ).pack(side=tk.RIGHT)
 
-            # Hairline divider between individual account rows
             tk.Frame(card, bg=Theme.BORDER_HAIRLINE, height=1).pack(fill=tk.X)
 
+    def _start_plaid_sync(self):
+        """Syncs all connected institutions in a background thread."""
+        if self.is_syncing:
+            return
+
+        self.is_syncing = True
+        self.btn_sync.config(text="↻ Syncing...", fg=Theme.TEXT_MUTED)
+
+        def worker():
+            total_added = 0
+            try:
+                with SessionLocal() as session:
+                    items = session.query(PlaidItemModel).all()
+                    item_ids = [item.item_id for item in items]
+
+                for item_id in item_ids:
+                    res = self.plaid_service.sync_transactions(item_id)
+                    total_added += len(res.get("added", []))
+
+                self.after(0, lambda: self._on_sync_success(total_added))
+            except Exception as e:
+                self.after(0, lambda err=e: messagebox.showerror("Sync Error", f"Failed to sync with Plaid: {err}"))
+            finally:
+                self.after(0, self._reset_sync_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _start_single_sync(self, item_id: str):
+        """Syncs a specific institution."""
+        if self.is_syncing:
+            return
+
+        self.is_syncing = True
+        self.btn_sync.config(text="↻ Syncing...", fg=Theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                res = self.plaid_service.sync_transactions(item_id)
+                added = len(res.get("added", []))
+                self.after(0, lambda: self._on_sync_success(added))
+            except Exception as e:
+                self.after(0, lambda err=e: messagebox.showerror("Sync Error", f"Failed to sync institution: {err}"))
+            finally:
+                self.after(0, self._reset_sync_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_sync_success(self, count: int):
+        self.refresh()
+        if self.on_accounts_updated:
+            self.on_accounts_updated()
+        messagebox.showinfo("Sync Complete", f"Successfully synced with bank! Fetched {count} transactions.")
+
+    def _reset_sync_button(self):
+        self.is_syncing = False
+        self.btn_sync.config(text="↻ Sync Feeds", fg=Theme.TEXT_PRIMARY)
+
     def _start_plaid_link(self):
-        """Launches the Plaid Link loopback server in a non-blocking daemon thread."""
         if self.is_connecting:
             return
 
@@ -307,7 +396,6 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         threading.Thread(target=run_thread, daemon=True).start()
 
     def _on_link_success(self, item_id: str, acc_count: int):
-        """Dispatched on loopback thread; routes back to Tkinter's main loop."""
         self.after(0, lambda: self._handle_link_complete(acc_count))
 
     def _handle_link_complete(self, acc_count: int):

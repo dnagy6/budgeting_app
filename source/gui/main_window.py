@@ -372,6 +372,8 @@ class BudgetApp:
         
         self.budget_view_frame.pack_forget()
         self.transactions_view_frame.pack_forget()
+        if hasattr(self, "accounts_view"):
+            self.accounts_view.pack_forget()
 
         if normalized_tab == "budget":
             self.budget_view_frame.pack(fill=tk.BOTH, expand=True)

@@ -84,6 +84,7 @@ class PlaidItemModel(Base):
     institution_id = Column(String, nullable=True)
     institution_name = Column(String, nullable=True)
     status = Column(String, default="active")
+    cursor = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
 

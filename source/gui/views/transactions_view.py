@@ -5,6 +5,8 @@ Purpose: Right-rail transaction stream container leveraging Theme tokens and the
 
 import calendar
 import tkinter as tk
+import threading
+
 from tkinter import ttk, messagebox
 from typing import Callable, Dict, List, Optional
 from source.settings import Theme
@@ -16,6 +18,11 @@ from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
 # Services
 from source.services.budget_service import BudgetService
 from source.services.transaction_stream_service import TransactionStreamService
+from source.services.plaid_service import PlaidService
+
+#persistence
+from source.persistence.database import SessionLocal
+from source.persistence.models import PlaidItemModel
 
 class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
     def __init__(
@@ -32,6 +39,9 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
         self.current_tab = "new"
         self.current_year = 2026
         self.current_month = 8
+
+        self.plaid_service = PlaidService()
+        self.is_syncing = False
 
         self._create_header_ui()
         self._create_tabs_ui()
@@ -266,12 +276,45 @@ class TransactionPanel(tk.Frame, ScrollableCanvasMixin):
             card.pack(fill=tk.X, pady=0)
 
     def _handle_simulate_sync(self):
-        self.stream_service.simulate_sync(
-            year=self.current_year,
-            month=self.current_month
-        )
+        """Pulls latest transactions from all linked Plaid institutions."""
+        if self.is_syncing:
+            return
+
+        self.is_syncing = True
+        self.btn_sync.config(text="↻ Syncing...", fg=Theme.TEXT_MUTED)
+
+        def worker():
+            total_added = 0
+            try:
+                with SessionLocal() as session:
+                    items = session.query(PlaidItemModel).all()
+                    item_ids = [item.item_id for item in items]
+
+                if not item_ids:
+                    self.after(0, lambda: messagebox.showinfo("No Accounts", "No linked bank accounts found. Connect an account in the Accounts tab first."))
+                    return
+
+                for item_id in item_ids:
+                    res = self.plaid_service.sync_transactions(item_id)
+                    total_added += res.get("added_count", 0)
+
+                self.after(0, lambda: self._on_sync_finished(total_added))
+            except Exception as e:
+                self.after(0, lambda err=e: messagebox.showerror("Sync Error", f"Failed to sync with bank: {err}"))
+            finally:
+                self.after(0, self._reset_sync_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_sync_finished(self, added_count: int):
         self.refresh()
-        self.on_data_changed()
+        if self.on_data_changed:
+            self.on_data_changed()
+        messagebox.showinfo("Bank Sync Complete", f"Successfully synced with bank! Imported {added_count} new transactions.")
+
+    def _reset_sync_button(self):
+        self.is_syncing = False
+        self.btn_sync.config(text="↻ Sync Bank Feed", fg=Theme.TEXT_MUTED)
 
     def _handle_assign_and_track(self, tx_id: int, category_name: str, cat_name_to_id: Dict[str, int]):
         top = self.winfo_toplevel()
