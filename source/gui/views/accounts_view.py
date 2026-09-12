@@ -10,6 +10,7 @@ from tkinter import messagebox
 from source.settings import Theme
 from source.persistence.database import SessionLocal
 from source.persistence.models import PlaidItemModel, PlaidAccountModel
+from source.persistence.repositories.plaid_repository import PlaidRepository
 from source.services.plaid_service import PlaidService
 from source.services.plaid_launcher import launch_plaid_link
 from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
@@ -20,6 +21,7 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         super().__init__(parent, bg=Theme.BG_CARD, **kwargs)
         self.on_accounts_updated = on_accounts_updated
         self.plaid_service = PlaidService()
+        self.plaid_repository = PlaidRepository()
         self.is_connecting = False
         self.is_syncing = False
 
@@ -146,44 +148,44 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def refresh(self):
-        """Reloads all institutions and accounts from SQLite and resets scroll position."""
+        """Reloads all institutions and accounts via PlaidRepository and resets scroll position."""
         for child in self.inner_frame.winfo_children():
             child.destroy()
 
-        with SessionLocal() as session:
-            items = session.query(PlaidItemModel).all()
-            accounts = session.query(PlaidAccountModel).all()
+        # 1. Fetch data directly through PlaidRepository (no SessionLocal needed)
+        items = self.plaid_repository.get_all_items()
+        accounts = self.plaid_repository.get_all_accounts()
 
-            grouped_accounts = {}
-            for acc in accounts:
-                grouped_accounts.setdefault(acc.item_id, []).append(acc)
+        grouped_accounts = {}
+        for acc in accounts:
+            grouped_accounts.setdefault(acc.item_id, []).append(acc)
 
-            liquid_cash = 0.0
-            credit_debt = 0.0
+        liquid_cash = 0.0
+        credit_debt = 0.0
 
-            for acc in accounts:
-                bal = float(acc.current_balance or 0.0)
-                acc_type = (acc.type or "").lower()
-                acc_subtype = (acc.subtype or "").lower()
+        for acc in accounts:
+            bal = float(acc.current_balance or 0.0)
+            acc_type = (acc.type or "").lower()
+            acc_subtype = (acc.subtype or "").lower()
 
-                if acc_type == "depository":
-                    liquid_cash += bal
-                elif acc_type in ("credit", "loan") or acc_subtype == "credit card":
-                    credit_debt += bal
+            if acc_type == "depository":
+                liquid_cash += bal
+            elif acc_type in ("credit", "loan") or acc_subtype == "credit card":
+                credit_debt += bal
 
-            net_balance = liquid_cash - credit_debt
+        net_balance = liquid_cash - credit_debt
 
-            self.lbl_cash.config(text=f"${liquid_cash:,.2f}")
-            self.lbl_debt.config(text=f"${credit_debt:,.2f}")
-            net_color = Theme.SUCCESS if net_balance >= 0 else Theme.DANGER
-            self.lbl_net.config(text=f"${net_balance:,.2f}", fg=net_color)
+        self.lbl_cash.config(text=f"${liquid_cash:,.2f}")
+        self.lbl_debt.config(text=f"${credit_debt:,.2f}")
+        net_color = Theme.SUCCESS if net_balance >= 0 else Theme.DANGER
+        self.lbl_net.config(text=f"${net_balance:,.2f}", fg=net_color)
 
-            if not items:
-                self._render_empty_state()
-            else:
-                for item in items:
-                    item_accs = grouped_accounts.get(item.item_id, [])
-                    self._render_institution_card(item, item_accs)
+        if not items:
+            self._render_empty_state()
+        else:
+            for item in items:
+                item_accs = grouped_accounts.get(item.item_id, [])
+                self._render_institution_card(item, item_accs)
 
         # Reset canvas viewport to top
         self.canvas.yview_moveto(0.0)
@@ -332,13 +334,13 @@ class AccountsView(tk.Frame, ScrollableCanvasMixin):
         def worker():
             total_added = 0
             try:
-                with SessionLocal() as session:
-                    items = session.query(PlaidItemModel).all()
-                    item_ids = [item.item_id for item in items]
+                # Use repository directly
+                items = self.plaid_repository.get_all_items()
+                item_ids = [item.item_id for item in items]
 
                 for item_id in item_ids:
                     res = self.plaid_service.sync_transactions(item_id)
-                    total_added += len(res.get("added", []))
+                    total_added += res.get("added_count", 0)
 
                 self.after(0, lambda: self._on_sync_success(total_added))
             except Exception as e:

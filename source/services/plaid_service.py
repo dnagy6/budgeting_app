@@ -20,13 +20,14 @@ from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 from source.persistence.database import SessionLocal
 from source.persistence.models import PlaidItemModel, PlaidAccountModel, TransactionModel
+from source.persistence.repositories.plaid_repository import PlaidRepository
 
 load_dotenv()
 
 
 class PlaidService:
     def __init__(self, repository=None):
-        self.repository = repository
+        self.repository = PlaidRepository()
 
         client_id = os.getenv("PLAID_CLIENT_ID")
         secret = os.getenv("PLAID_SECRET")
@@ -75,73 +76,33 @@ class PlaidService:
         }
 
     def fetch_and_save_accounts(self, access_token: str, item_id: str, institution_name: str = "Sandbox Bank"):
-        """Fetches account balances from Plaid and saves Item + Accounts in SQLite."""
-        # Fetch live account structures from Plaid
+        """Fetches account balances from Plaid and saves Item + Accounts via repository."""
         req = AccountsGetRequest(access_token=access_token)
         resp = self.client.accounts_get(req)
         accounts_data = resp["accounts"]
 
-        with SessionLocal() as session:
-            # Upsert Plaid Item
-            item = session.query(PlaidItemModel).filter_by(item_id=item_id).first()
-            if not item:
-                item = PlaidItemModel(
-                    item_id=item_id,
-                    access_token=access_token,
-                    institution_name=institution_name,
-                    status="active"
-                )
-                session.add(item)
-            else:
-                item.access_token = access_token
-                item.status = "active"
-
-            # Upsert individual accounts (Checking, Savings, Credit)
-            for acc in accounts_data:
-                existing_acc = session.query(PlaidAccountModel).filter_by(account_id=acc["account_id"]).first()
-                curr_bal = float(acc["balances"]["current"] or 0.0)
-                avail_bal = float(acc["balances"]["available"] or curr_bal)
-
-                if existing_acc:
-                    existing_acc.current_balance = curr_bal
-                    existing_acc.available_balance = avail_bal
-                    existing_acc.name = acc["name"]
-                else:
-                    new_acc = PlaidAccountModel(
-                        item_id=item_id,
-                        account_id=acc["account_id"],
-                        name=acc["name"],
-                        official_name=acc.get("official_name"),
-                        mask=acc.get("mask"),
-                        type=str(acc["type"]),
-                        subtype=str(acc.get("subtype")),
-                        current_balance=curr_bal,
-                        available_balance=avail_bal
-                    )
-                    session.add(new_acc)
-
-            session.commit()
-        return len(accounts_data)
+        self.repository.upsert_item(item_id=item_id, access_token=access_token, institution_name=institution_name)
+        return self.repository.upsert_accounts(item_id=item_id, accounts_data=accounts_data)
 
     def sync_transactions(self, item_id: str) -> dict:
         """
         Pulls latest transactions for an item using Plaid's cursor-based sync API,
         saves new transactions to SQLite with status='new', and updates the cursor.
         """
-        with SessionLocal() as session:
-            item = session.query(PlaidItemModel).filter_by(item_id=item_id).first()
-            if not item:
-                raise ValueError(f"No Plaid Item found with ID: {item_id}")
+        # 1. Fetch item from repository (no SessionLocal needed here)
+        item = self.repository.get_item_by_id(item_id)
+        if not item:
+            raise ValueError(f"No Plaid Item found with ID: {item_id}")
 
-            access_token = item.access_token
-            cursor = item.cursor
+        access_token = item.access_token
+        cursor = item.cursor
 
         added_records = []
         modified_records = []
         removed_records = []
         has_more = True
 
-        # 1. Fetch all pages of changes from Plaid
+        # 2. Fetch all pages of changes from Plaid
         while has_more:
             request_args = {"access_token": access_token, "count": 100}
             if cursor:
@@ -157,15 +118,12 @@ class PlaidService:
             has_more = response["has_more"]
             cursor = response["next_cursor"]
 
-        # 2. Persist to SQLite
+        # 3. Update cursor using repository
+        self.repository.update_item_cursor(item_id, cursor)
+
+        # 4. Persist transaction records to SQLite
         saved_count = 0
         with SessionLocal() as session:
-            # Update cursor on the item
-            item = session.query(PlaidItemModel).filter_by(item_id=item_id).first()
-            if item:
-                item.cursor = cursor
-
-            # Process ADDED transactions
             for tx in added_records:
                 plaid_tx_id = tx["transaction_id"]
 
@@ -174,19 +132,15 @@ class PlaidService:
                 if existing:
                     continue
 
-                # Polarity inversion: Plaid positive (outflow) -> app negative (-12.50)
-                #                    Plaid negative (inflow)  -> app positive (+2500.00)
                 raw_amount = Decimal(str(tx["amount"]))
                 app_amount = -raw_amount
 
-                # Date parsing
                 raw_date = tx.get("authorized_date") or tx.get("date")
                 if isinstance(raw_date, str):
                     tx_date = date.fromisoformat(raw_date)
                 else:
                     tx_date = raw_date
 
-                # Merchant name fallback
                 merchant = tx.get("merchant_name") or tx.get("name") or "Unknown Merchant"
 
                 new_tx = TransactionModel(
@@ -200,7 +154,6 @@ class PlaidService:
                 session.add(new_tx)
                 saved_count += 1
 
-            # Process REMOVED transactions (e.g., pending authorizations dropped by bank)
             for rm in removed_records:
                 rm_id = rm["transaction_id"]
                 dead_tx = session.query(TransactionModel).filter_by(external_id=rm_id).first()
