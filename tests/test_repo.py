@@ -1,17 +1,24 @@
-# tests/test_repository.py
 import pytest
 from decimal import Decimal
 from datetime import date
-from source.persistence.database import engine, Base, init_db
+from sqlalchemy import create_engine
+
+from source.persistence.database import Base, SessionLocal, engine as prod_engine
 from source.persistence.repositories import BudgetRepository
+
 
 @pytest.fixture(autouse=True)
 def setup_database():
-    """Initializes the database before running tests."""
-    Base.metadata.drop_all(bind = engine)
-    init_db()
+    """Isolates tests to an in-memory SQLite database so budget.db is never modified."""
+    test_engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=test_engine)
+    SessionLocal.configure(bind=test_engine)
+
     yield
-    Base.metadata.drop_all(bind = engine)
+
+    Base.metadata.drop_all(bind=test_engine)
+    test_engine.dispose()
+    SessionLocal.configure(bind=prod_engine)
 
 def test_add_and_retrieve_category():
     repo = BudgetRepository()

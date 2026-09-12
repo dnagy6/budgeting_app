@@ -221,6 +221,8 @@ __marimo__/
 # Local Application & Database Files
 # ==========================================
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 
