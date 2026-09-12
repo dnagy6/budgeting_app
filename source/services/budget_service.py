@@ -5,7 +5,7 @@ from typing import Optional
 from source.domain.budget import Budget
 from source.domain.category import Category
 from source.domain.transaction import Transaction
-from source.persistence.repository import BudgetRepository
+from source.persistence.repositories import BudgetRepository
 
 from source.persistence.models import MonthlyGroupStateModel
 

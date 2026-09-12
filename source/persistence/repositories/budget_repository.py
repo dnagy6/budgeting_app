@@ -4,11 +4,15 @@ from typing import List, Optional
 from sqlalchemy import select
 from source.persistence.database import SessionLocal
 from source.persistence.models import CategoryGroupModel, CategoryModel, TransactionModel, MonthlyAllocationModel, MonthlyGroupStateModel
+from source.persistence.repositories.transaction_repository import TransactionRepository
+
 
 
 class BudgetRepository:
     """Handles database CRUD operations for categories and transactions."""
 
+    def __init__(self):
+        self.transaction_repo = TransactionRepository()
     # CATEGORY GROUP OPERATIONS
 
     def add_category_group(
@@ -387,7 +391,7 @@ class BudgetRepository:
             session.commit()
             return True
 
-    #-------- TRANSACTION OPERATIONS ----------
+    # --------- TRANSACTION OPERATIONS ---------
 
     def add_transaction(
         self,
@@ -399,65 +403,34 @@ class BudgetRepository:
         external_id: Optional[str] = None
     ) -> TransactionModel:
         """Creates and saves a new transaction."""
-        with SessionLocal() as session:
-            transaction = TransactionModel(
-                amount=amount,
-                trans_date=trans_date,
-                category_id=category_id,
-                note=note,
-                status=status,
-                external_id=external_id
-            )
-            session.add(transaction)
-            session.commit()
-            session.refresh(transaction)
-            return transaction
+        return self.transaction_repo.add_transaction(
+            amount=amount,
+            trans_date=trans_date,
+            category_id=category_id,
+            note=note,
+            status=status,
+            external_id=external_id
+        )
 
     def get_all_transactions(self, status: Optional[str] = None) -> List[TransactionModel]:
         """Retrieves transactions ordered by date descending, optionally filtered by status."""
-        with SessionLocal() as session:
-            stmt = select(TransactionModel)
-            if status:
-                stmt = stmt.where(TransactionModel.status == status)
-            stmt = stmt.order_by(TransactionModel.trans_date.desc())
-            return list(session.scalars(stmt).all())
+        return self.transaction_repo.get_all_transactions(status=status)
 
     def update_transaction_status(self, transaction_id: int, new_status: str) -> bool:
         """Updates transaction status ('new', 'tracked', 'deleted', 'pending')."""
-        with SessionLocal() as session:
-            tx = session.get(TransactionModel, transaction_id)
-            if tx:
-                tx.status = new_status
-                session.commit()
-                return True
-            return False
+        return self.transaction_repo.update_transaction_status(transaction_id, new_status)
 
     def get_transaction_by_external_id(self, external_id: str) -> Optional[TransactionModel]:
         """Fetches a transaction by external/Plaid ID for deduplication."""
-        with SessionLocal() as session:
-            stmt = select(TransactionModel).where(TransactionModel.external_id == external_id)
-            return session.scalars(stmt).first()
+        return self.transaction_repo.get_transaction_by_external_id(external_id)
 
     def assign_transaction_category(self, transaction_id: int, category_id: int) -> bool:
-        """Assigns an envelope category to a transaction and updates status to tracked."""
-        with SessionLocal() as session:
-            tx = session.get(TransactionModel, transaction_id)
-            if tx:
-                tx.category_id = category_id
-                tx.status = "tracked"
-                session.commit()
-                return True
-            return False
+        """Assigns an envelope category to a transaction and updates status to 'tracked'."""
+        return self.transaction_repo.assign_transaction_category(transaction_id, category_id)
 
     def delete_transaction(self, transaction_id: int) -> bool:
         """Permanently deletes a transaction from the database."""
-        with SessionLocal() as session:
-            tx = session.get(TransactionModel, transaction_id)
-            if tx:
-                session.delete(tx)
-                session.commit()
-                return True
-            return False
+        return self.transaction_repo.delete_transaction(transaction_id)
 
     #------- MONTHLY OPERATIONS -----------
 

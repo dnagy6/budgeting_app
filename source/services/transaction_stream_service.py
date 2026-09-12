@@ -12,7 +12,7 @@ from source.domain.view_models import TransactionStreamViewState
 
 #Persistence
 from source.persistence.models import CategoryModel
-from source.persistence.repository import BudgetRepository
+from source.persistence.repositories import BudgetRepository
 
 #Services
 from source.services.mock_stream_generator import MockStreamGenerator

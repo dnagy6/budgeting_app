@@ -8,7 +8,7 @@ from source.settings import Theme, AppConfig
 from source.domain.budget import Budget
 from source.domain.category import Category
 from source.gui.dialogs.transaction_dialog import LogTransactionDialog
-from source.persistence.repository import BudgetRepository
+from source.persistence.repositories import BudgetRepository
 from source.services.budget_service import BudgetService
 from source.services.rollover_service import RolloverService
 

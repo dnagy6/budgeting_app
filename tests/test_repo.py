@@ -3,7 +3,7 @@ import pytest
 from decimal import Decimal
 from datetime import date
 from source.persistence.database import engine, Base, init_db
-from source.persistence.repository import BudgetRepository
+from source.persistence.repositories import BudgetRepository
 
 @pytest.fixture(autouse=True)
 def setup_database():

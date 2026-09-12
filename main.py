@@ -3,7 +3,7 @@ import sys
 
 from source.gui.main_window import BudgetApp
 from source.persistence.database import init_db
-from source.persistence.repository import BudgetRepository
+from source.persistence.repositories import BudgetRepository
 from source.services.budget_service import BudgetService
 
 
