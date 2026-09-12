@@ -13,7 +13,7 @@ from source.persistence.models import PlaidItemModel, PlaidAccountModel
 from source.persistence.repositories.plaid_repository import PlaidRepository
 from source.services.plaid_service import PlaidService
 from source.services.plaid_launcher import launch_plaid_link
-from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
+from source.gui.mixins import ScrollableCanvasMixin
 
 
 class AccountsView(tk.Frame, ScrollableCanvasMixin):

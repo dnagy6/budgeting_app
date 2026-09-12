@@ -6,7 +6,7 @@ Purpose: Container managing scrollable category groups and inline group creation
 import tkinter as tk
 from source.settings import Theme
 from source.gui.widgets.category_group_card import CategoryGroupCard
-from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
+from source.gui.mixins import ScrollableCanvasMixin
 
 
 class ExpenseCard(tk.Frame, ScrollableCanvasMixin):

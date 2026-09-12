@@ -9,8 +9,7 @@ from typing import Callable, Optional
 from source.settings import Theme
 from source.domain.category import Category
 from source.domain.category_group import CategoryGroup
-from source.gui.widgets.card_drag_mixin import CardDragMixin
-from source.gui.widgets.card_inline_edit_mixin import CardInlineEditMixin
+from source.gui.mixins import CardDragMixin, CardInlineEditMixin
 
 class CategoryGroupCard(tk.Frame, CardDragMixin, CardInlineEditMixin):
     def __init__(

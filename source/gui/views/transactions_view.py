@@ -13,7 +13,7 @@ from source.settings import Theme
 
 # Widgets
 from source.gui.widgets.transaction_card import TransactionCard
-from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
+from source.gui.mixins import ScrollableCanvasMixin
 
 # Services
 from source.services.budget_service import BudgetService

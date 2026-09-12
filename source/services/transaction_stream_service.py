@@ -14,8 +14,7 @@ from source.domain.view_models import TransactionStreamViewState
 from source.persistence.models import CategoryModel
 from source.persistence.repositories import BudgetRepository
 
-#Services
-from source.services.mock_stream_generator import MockStreamGenerator
+
 
 
 class TransactionStreamService:
@@ -150,13 +149,4 @@ class TransactionStreamService:
             cat_name_to_id=cat_name_to_id
         )
 
-    #Bank Syncing (Currently a Simulation)
 
-    def simulate_sync(self, year: int, month: int, count: int = 4):
-        """Simulates a bank feed webhook payload and processes the batch."""
-        batch = MockStreamGenerator.generate_batch(
-            count=count,
-            year=year,
-            month=month
-        )
-        return self.ingest_payload(batch)

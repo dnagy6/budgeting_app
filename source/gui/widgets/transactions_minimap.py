@@ -5,7 +5,8 @@ Purpose: Read-only right rail for the Transactions tab to monitor envelope balan
 
 import tkinter as tk
 from source.settings import Theme
-from source.gui.widgets.scrollable_canvas_mixin import ScrollableCanvasMixin
+
+from source.gui.mixins import ScrollableCanvasMixin
 
 class TransactionsMinimap(tk.Frame, ScrollableCanvasMixin):
     def __init__(self, parent, **kwargs):
