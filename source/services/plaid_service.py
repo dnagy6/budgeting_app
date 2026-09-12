@@ -21,6 +21,8 @@ from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from source.persistence.database import SessionLocal
 from source.persistence.models import PlaidItemModel, PlaidAccountModel, TransactionModel
 from source.persistence.repositories.plaid_repository import PlaidRepository
+from source.persistence.repositories.transaction_repository import TransactionRepository
+
 
 load_dotenv()
 
@@ -28,6 +30,7 @@ load_dotenv()
 class PlaidService:
     def __init__(self, repository=None):
         self.repository = PlaidRepository()
+        self.transaction_repository = TransactionRepository()
 
         client_id = os.getenv("PLAID_CLIENT_ID")
         secret = os.getenv("PLAID_SECRET")
@@ -123,44 +126,40 @@ class PlaidService:
 
         # 4. Persist transaction records to SQLite
         saved_count = 0
-        with SessionLocal() as session:
-            for tx in added_records:
-                plaid_tx_id = tx["transaction_id"]
 
-                # Deduplication check
-                existing = session.query(TransactionModel).filter_by(external_id=plaid_tx_id).first()
-                if existing:
-                    continue
+        # Process ADDED transactions
+        for tx in added_records:
+            plaid_tx_id = tx["transaction_id"]
 
-                raw_amount = Decimal(str(tx["amount"]))
-                app_amount = -raw_amount
+            # Deduplication check
+            existing = self.transaction_repository.get_transaction_by_external_id(plaid_tx_id)
+            if existing:
+                continue
 
-                raw_date = tx.get("authorized_date") or tx.get("date")
-                if isinstance(raw_date, str):
-                    tx_date = date.fromisoformat(raw_date)
-                else:
-                    tx_date = raw_date
+            raw_amount = Decimal(str(tx["amount"]))
+            app_amount = -raw_amount
 
-                merchant = tx.get("merchant_name") or tx.get("name") or "Unknown Merchant"
+            raw_date = tx.get("authorized_date") or tx.get("date")
+            if isinstance(raw_date, str):
+                tx_date = date.fromisoformat(raw_date)
+            else:
+                tx_date = raw_date
 
-                new_tx = TransactionModel(
-                    amount=app_amount,
-                    trans_date=tx_date,
-                    category_id=None,
-                    note=merchant,
-                    status="new",
-                    external_id=plaid_tx_id
-                )
-                session.add(new_tx)
-                saved_count += 1
+            merchant = tx.get("merchant_name") or tx.get("name") or "Unknown Merchant"
 
-            for rm in removed_records:
-                rm_id = rm["transaction_id"]
-                dead_tx = session.query(TransactionModel).filter_by(external_id=rm_id).first()
-                if dead_tx and dead_tx.status == "new":
-                    session.delete(dead_tx)
+            self.transaction_repository.add_transaction(
+                amount=app_amount,
+                trans_date=tx_date,
+                category_id=None,
+                note=merchant,
+                status="new",
+                external_id=plaid_tx_id
+            )
+            saved_count += 1
 
-            session.commit()
+        # Process REMOVED transactions
+        for rm in removed_records:
+            self.transaction_repository.delete_by_external_id(rm["transaction_id"])
 
         return {
             "added_count": saved_count,
